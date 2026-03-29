@@ -1,0 +1,79 @@
+{
+  "eqs_users": [
+    {"id": "demo_admin", "tz": "910000001", "name": "חשבון מנהל דמו", "password": "demo1234", "role": "admin", "address": "", "phone": "050-9000001", "email": "admin-01@demo.invalid", "extraFields": {}},
+    {"id": "demo_mgr2", "tz": "910000002", "name": "חשבון מנהל דמו 2", "password": "demo2222", "role": "admin", "address": "", "phone": "050-9000002", "email": "admin-02@demo.invalid", "extraFields": {}},
+    {"id": "demo_stu1", "tz": "920000001", "name": "חשבון סטודנט דמו 01", "password": "demo5678", "role": "student", "year": "שנה א", "address": "", "phone": "050-9000101", "email": "student-01@demo.invalid", "extraFields": {}},
+    {"id": "demo_stu2", "tz": "920000002", "name": "חשבון סטודנט דמו 02", "password": "demo9999", "role": "student", "year": "שנה ב", "address": "", "phone": "050-9000102", "email": "student-02@demo.invalid", "extraFields": {}},
+    {"id": "demo_stu3", "tz": "920000003", "name": "חשבון סטודנט דמו 03", "password": "demo8888", "role": "student", "year": "שנה ג", "address": "", "phone": "050-9000103", "email": "student-03@demo.invalid", "extraFields": {}}
+  ],
+  "eqs_journals": [
+    {"id": "j1", "name": "טייפים ניידים"},
+    {"id": "j2", "name": "מצלמות"},
+    {"id": "j3", "name": "חדרי עריכה"},
+    {"id": "j4", "name": "אולפנים"},
+    {"id": "j5", "name": "אולפני סאונד"},
+    {"id": "j6", "name": "ציוד כללי"},
+    {"id": "j7", "name": "רדיו"},
+    {"id": "j8", "name": "סטודיו"},
+    {"id": "j9", "name": "ציוד תאורה"},
+    {"id": "j99", "name": "מלאי כללי"},
+    {"id": "j0", "name": "אחר"}
+  ],
+  "eqs_inventory": [
+    {"id": "dm_cam_01", "barcode": "8801001", "name": "מצלמה — Alpha Demo 7 III", "type": "מצלמה", "manufacturer": "DemoOptics", "serial": "SN-DEMO-001", "price": 12000, "invoiceNum": "", "purchaseDate": "2024-01-15", "supplier": "דמו", "location": "מחסן א", "loanable": true, "status": "תקין", "notes": "פריט דמו", "journalId": "j2"},
+    {"id": "dm_cam_02", "barcode": "8801002", "name": "מצלמה — Beta Demo FX3", "type": "מצלמה", "manufacturer": "DemoOptics", "serial": "SN-DEMO-002", "price": 15000, "invoiceNum": "", "purchaseDate": "2024-03-20", "supplier": "דמו", "location": "מחסן א", "loanable": true, "status": "תקין", "notes": "", "journalId": "j2"},
+    {"id": "dm_lens_01", "barcode": "8802001", "name": "עדשה 24–70mm דמו", "type": "עדשה", "manufacturer": "DemoGlass", "serial": "LG-DEMO-01", "price": 4000, "invoiceNum": "", "purchaseDate": "2023-11-01", "supplier": "דמו", "location": "מחסן א", "loanable": true, "status": "תקין", "notes": "", "journalId": "j2"},
+    {"id": "dm_tripod", "barcode": "8803001", "name": "חצובה מקצועית דמו", "type": "אביזר", "manufacturer": "DemoGrip", "serial": "", "price": 800, "invoiceNum": "", "purchaseDate": "2024-06-01", "supplier": "דמו", "location": "מחסן ב", "loanable": true, "status": "תקין", "notes": "", "journalId": "j6"},
+    {"id": "dm_mic_01", "barcode": "8804001", "name": "מיקרופון קונדנסר דמו", "type": "מיקרופון", "manufacturer": "DemoSound", "serial": "MIC-D01", "price": 900, "invoiceNum": "", "purchaseDate": "2024-02-10", "supplier": "דמו", "location": "אולפן דמו", "loanable": true, "status": "תקין", "notes": "", "journalId": "j5"},
+    {"id": "dm_mic_02", "barcode": "8804002", "name": "מיקרופון דינמי דמו", "type": "מיקרופון", "manufacturer": "DemoSound", "serial": "MIC-D02", "price": 450, "invoiceNum": "", "purchaseDate": "2023-09-09", "supplier": "דמו", "location": "אולפן דמו", "loanable": true, "status": "תקין", "notes": "", "journalId": "j5"},
+    {"id": "dm_recorder", "barcode": "8804003", "name": "מקליט שדה 32bit דמו", "type": "מקליט", "manufacturer": "DemoSound", "serial": "REC-01", "price": 2200, "invoiceNum": "", "purchaseDate": "2024-04-01", "supplier": "דמו", "location": "אולפן דמו", "loanable": true, "status": "תקין", "notes": "", "journalId": "j5"},
+    {"id": "dm_hp_01", "barcode": "8804004", "name": "אוזניות סגירה דמו", "type": "אוזניות", "manufacturer": "DemoSound", "serial": "", "price": 350, "invoiceNum": "", "purchaseDate": "2024-01-01", "supplier": "דמו", "location": "אולפן דמו", "loanable": true, "status": "תקין", "notes": "", "journalId": "j5"},
+    {"id": "dm_light_01", "barcode": "8805001", "name": "פנס LED 200W דמו", "type": "תאורה", "manufacturer": "DemoLux", "serial": "LT-01", "price": 1800, "invoiceNum": "", "purchaseDate": "2023-12-12", "supplier": "דמו", "location": "מחסן ג", "loanable": true, "status": "תקין", "notes": "", "journalId": "j9"},
+    {"id": "dm_light_02", "barcode": "8805002", "name": "פנס כוונן דמו", "type": "תאורה", "manufacturer": "DemoLux", "serial": "LT-02", "price": 950, "invoiceNum": "", "purchaseDate": "2024-05-05", "supplier": "דמו", "location": "מחסן ג", "loanable": true, "status": "תקין", "notes": "", "journalId": "j9"},
+    {"id": "dm_sd_01", "barcode": "8806001", "name": "כרטיס זיכרון 128GB דמו", "type": "אחסון", "manufacturer": "DemoCard", "serial": "", "price": 120, "invoiceNum": "", "purchaseDate": "2024-07-01", "supplier": "דמו", "location": "קופסה", "loanable": true, "status": "תקין", "notes": "", "journalId": "j6"},
+    {"id": "dm_boom", "barcode": "8807001", "name": "בום מיקרופון דמו", "type": "אביזר", "manufacturer": "DemoSound", "serial": "", "price": 600, "invoiceNum": "", "purchaseDate": "2024-01-20", "supplier": "דמו", "location": "מחסן ב", "loanable": true, "status": "תקין", "notes": "", "journalId": "j5"},
+    {"id": "dm_xlr", "barcode": "8807002", "name": "כבל XLR 5m דמו", "type": "כבל", "manufacturer": "DemoCable", "serial": "", "price": 80, "invoiceNum": "", "purchaseDate": "2024-08-08", "supplier": "דמו", "location": "מגירה", "loanable": true, "status": "תקין", "notes": "", "journalId": "j6"},
+    {"id": "dm_edit_01", "barcode": "8808001", "name": "תחנת עריכה — חדר 1 (דמו)", "type": "תחנה", "manufacturer": "DemoSuite", "serial": "ED-01", "price": 0, "invoiceNum": "", "purchaseDate": "2024-01-01", "supplier": "", "location": "חדר עריכה", "loanable": true, "status": "תקין", "notes": "שיבוץ כחדר", "journalId": "j3"},
+    {"id": "dm_edit_02", "barcode": "8808002", "name": "תחנת עריכה — חדר 2 (דמו)", "type": "תחנה", "manufacturer": "DemoSuite", "serial": "ED-02", "price": 0, "invoiceNum": "", "purchaseDate": "2024-01-01", "supplier": "", "location": "חדר עריכה", "loanable": true, "status": "תקין", "notes": "", "journalId": "j3"}
+  ],
+  "eqs_orders": [],
+  "eqs_kits": [],
+  "eqs_removed": [],
+  "eqs_notifications": [],
+  "eqs_deleted_orders": [],
+  "eqs_activity_log": [],
+  "eqs_settings": {
+    "supportEmail": "demo@example.com",
+    "systemTitle": "הדגמה – מערכת ניהול ציוד וידאו/סאונד (נתונים פיקטיביים)",
+    "emailNotificationsEnabled": false,
+    "emailEventRules": {
+      "orderApproved": false,
+      "orderRejected": false,
+      "orderAdminUpdate": false,
+      "cancelRequested": false,
+      "cancelApproved": false,
+      "cancelRejected": false
+    },
+    "emailjsServiceId": "",
+    "emailjsTemplateId": "",
+    "emailjsPublicKey": "",
+    "managerHourlyReminderEnabled": false,
+    "outlookIcsExportEnabled": false,
+    "broadcastEnabled": false,
+    "broadcastMessage": "",
+    "broadcastStartDate": "",
+    "broadcastEndDate": "",
+    "broadcastRev": 0,
+    "warehouseEnforceWeeklyHours": false,
+    "warehouseWeeklyHours": [
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "14:00"}]},
+      {"enabled": false, "slots": []}
+    ],
+    "warehouseClosures": []
+  }
+}

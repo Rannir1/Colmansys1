@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>טעינת מערכת הדגמה</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    .err { color: #b91c1c; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>מערכת הדגמה</h1>
+  <p id="msg">מנקים נתונים ישנים וטוענים <code>demo-seed.json</code>…</p>
+
+  <script>
+(function () {
+  var msg = document.getElementById('msg');
+  var dir = location.pathname.replace(/[^/]+$/, '') || '/';
+  var seedUrl = dir + 'demo-seed.json';
+  var appUrl = dir + 'index.html?demo=1';
+
+  /** מוחק כל מה שהאפליקציה שמרה בדפדפן — כדי שלא יישארו סטודנטים/מלאי מהמחשב המקומי או מכניסה קודמת ל־index בלי דמו */
+  function clearAllEqsStorage() {
+    try {
+      var ls = window.localStorage;
+      if (!ls) return;
+      for (var i = ls.length - 1; i >= 0; i--) {
+        var k = ls.key(i);
+        if (k && k.indexOf('eqs_') === 0) ls.removeItem(k);
+      }
+    } catch (e) {}
+  }
+
+  clearAllEqsStorage();
+
+  fetch(seedUrl)
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' — ודאו ש־demo-seed.json באותה תיקייה עם start.html');
+      return r.json();
+    })
+    .then(function (data) {
+      if (!data || typeof data !== 'object') throw new Error('מבנה JSON לא תקין');
+      Object.keys(data).forEach(function (k) {
+        var v = data[k];
+        localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+      });
+      localStorage.setItem('eqs_demo_mode', '1');
+      msg.textContent = 'הנתונים הפיקטיביים נטענו. מעבירים לאפליקציה…';
+      location.replace(appUrl);
+    })
+    .catch(function (e) {
+      msg.className = 'err';
+      msg.innerHTML =
+        '<strong>שגיאה:</strong> ' + (e && e.message ? e.message : String(e)) +
+        '<br /><br />בדקו שכל הקבצים הועלו לאותה תיקייה בשרת: <code>start.html</code>, <code>demo-seed.json</code>, <code>index.html</code>.';
+    });
+})();
+  </script>
+</body>
+</html>
