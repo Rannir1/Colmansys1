@@ -1,0 +1,66 @@
+{
+  "eqs_users": [
+    {"id": "admin_ran", "tz": "23977200", "name": "רן ניר", "password": "0309", "role": "admin", "address": "תל אביב", "phone": "050-0000000", "email": "rann@colman.ac.il", "extraFields": {}},
+    {"id": "demo_stu1", "tz": "920000001", "name": "סטודנט·ית דמו א׳", "password": "demo5678", "role": "student", "year": "שנה א", "address": "", "phone": "050-9000101", "email": "student-01@demo.invalid", "extraFields": {}},
+    {"id": "demo_stu2", "tz": "920000002", "name": "סטודנט·ית דמו ב׳", "password": "demo9999", "role": "student", "year": "שנה ב", "address": "", "phone": "050-9000102", "email": "student-02@demo.invalid", "extraFields": {}},
+    {"id": "demo_stu3", "tz": "920000003", "name": "סטודנט·ית דמו ג׳", "password": "demo8888", "role": "student", "year": "שנה ג", "address": "", "phone": "050-9000103", "email": "student-03@demo.invalid", "extraFields": {}},
+    {"id": "demo_stu4", "tz": "920000004", "name": "סטודנט·ית דמו ד׳", "password": "demo7777", "role": "student", "year": "שנה א", "address": "", "phone": "050-9000104", "email": "student-04@demo.invalid", "extraFields": {}},
+    {"id": "demo_stu5", "tz": "920000005", "name": "סטודנט·ית דמו ה׳", "password": "demo6666", "role": "student", "year": "שנה ב", "address": "", "phone": "050-9000105", "email": "student-05@demo.invalid", "extraFields": {}}
+  ],
+  "eqs_journals": [
+    {"id": "j1", "name": "טייפים ניידים"},
+    {"id": "j2", "name": "מצלמות"},
+    {"id": "j3", "name": "חדרי עריכה"},
+    {"id": "j4", "name": "אולפנים"},
+    {"id": "j5", "name": "אולפני סאונד"},
+    {"id": "j6", "name": "ציוד כללי"},
+    {"id": "j7", "name": "רדיו"},
+    {"id": "j8", "name": "סטודיו"},
+    {"id": "j9", "name": "ציוד תאורה"},
+    {"id": "j99", "name": "מלאי כללי"},
+    {"id": "j0", "name": "אחר"}
+  ],
+  "eqs_inventory": [
+    {"id": "dm_cam_01", "barcode": "8801001", "name": "מצלמה — Demo Alpha", "type": "מצלמה", "manufacturer": "Demo", "serial": "SN-1", "price": 1, "invoiceNum": "", "purchaseDate": "2024-01-15", "supplier": "דמו", "location": "מחסן", "loanable": true, "status": "תקין", "notes": "דמו", "journalId": "j2"}
+  ],
+  "eqs_orders": [],
+  "eqs_kits": [],
+  "eqs_removed": [],
+  "eqs_notifications": [],
+  "eqs_deleted_orders": [],
+  "eqs_activity_log": [],
+  "eqs_settings": {
+    "supportEmail": "demo@example.com",
+    "systemTitle": "הדגמה – מערכת ניהול ציוד (נתונים פיקטיביים)",
+    "emailNotificationsEnabled": false,
+    "emailEventRules": {
+      "orderApproved": false,
+      "orderRejected": false,
+      "orderAdminUpdate": false,
+      "cancelRequested": false,
+      "cancelApproved": false,
+      "cancelRejected": false
+    },
+    "emailjsServiceId": "",
+    "emailjsTemplateId": "",
+    "emailjsPublicKey": "",
+    "managerHourlyReminderEnabled": false,
+    "outlookIcsExportEnabled": false,
+    "broadcastEnabled": false,
+    "broadcastMessage": "",
+    "broadcastStartDate": "",
+    "broadcastEndDate": "",
+    "broadcastRev": 0,
+    "warehouseEnforceWeeklyHours": false,
+    "warehouseWeeklyHours": [
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "18:00"}]},
+      {"enabled": true, "slots": [{"from": "08:00", "to": "14:00"}]},
+      {"enabled": false, "slots": []}
+    ],
+    "warehouseClosures": []
+  }
+}

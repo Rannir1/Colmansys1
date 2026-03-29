@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Load demo data</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+    .err { color: #b91c1c; }
+    code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Demo / hosting loader</h1>
+  <p id="msg">Clearing storage for this site only, then loading <code>demo-seed.json</code>…</p>
+
+  <script>
+(function () {
+  var msg = document.getElementById('msg');
+  var dir = location.pathname.replace(/[^/]+$/, '') || '/';
+  var seedUrl = dir + 'demo-seed.json';
+  var appUrl = dir + 'index.html?demo=1';
+
+  function repoSeg() {
+    try {
+      if (location.protocol === 'file:') return '';
+      var p = (location.pathname || '').split('/').filter(Boolean)[0] || '';
+      if (!p || /\.html?$/i.test(p)) return '';
+      return String(p);
+    } catch (e) { return ''; }
+  }
+
+  function mapSeedKey(k) {
+    var r = repoSeg();
+    if (!r || k.indexOf('eqs_') !== 0) return k;
+    return 'eqs_' + r + '_' + k.substring(4);
+  }
+
+  function clearThisSiteEqsStorage() {
+    try {
+      var ls = window.localStorage;
+      if (!ls) return;
+      var r = repoSeg();
+      var prefix = r ? ('eqs_' + r + '_') : '';
+      for (var i = ls.length - 1; i >= 0; i--) {
+        var k = ls.key(i);
+        if (!k || k.indexOf('eqs_') !== 0) continue;
+        if (r) { if (k.indexOf(prefix) === 0) ls.removeItem(k); }
+        else { ls.removeItem(k); }
+      }
+    } catch (e) {}
+  }
+
+  clearThisSiteEqsStorage();
+
+  fetch(seedUrl)
+    .then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' — put demo-seed.json next to start.html');
+      return r.json();
+    })
+    .then(function (data) {
+      if (!data || typeof data !== 'object') throw new Error('Invalid JSON');
+      Object.keys(data).forEach(function (k) {
+        var v = data[k];
+        localStorage.setItem(mapSeedKey(k), typeof v === 'string' ? v : JSON.stringify(v));
+      });
+      localStorage.setItem(mapSeedKey('eqs_demo_mode'), '1');
+      msg.textContent = 'Done. Redirecting…';
+      location.replace(appUrl);
+    })
+    .catch(function (e) {
+      msg.className = 'err';
+      msg.innerHTML = '<strong>Error:</strong> ' + (e && e.message ? e.message : String(e));
+    });
+})();
+  </script>
+</body>
+</html>
