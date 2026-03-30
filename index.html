@@ -210,13 +210,26 @@ const load=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 
 // ---------- סנכרון ענן (Supabase REST) — נתונים משותפים לכל המכשירים ----------
 const CLOUD_SYNC_CFG_KEY='eqs_cloud_sync';
+const CLOUD_DEFAULT_URL='https://fywheypoiwsoerkthwua.supabase.co';
+const CLOUD_DEFAULT_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5d2hleXBvaXdzb2Vya3Rod3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NDg1NjMsImV4cCI6MjA5MDQyNDU2M30.7VdGmszM4MgK1kA3Gr3NBYDI4erCh69B_V_ifZRyocs';
 const CLOUD_EXTRA_SYNC_KEYS=['eqs_hiddenJournals','eqs_stockcount_history','eqs_stockcount_active','eqs_suppliers','eqs_stockcount','eqs_logo_src'];
 const CLOUD_DENY_KEYS=new Set([CLOUD_SYNC_CFG_KEY,'eqs_demo_mode','eqs_login_attempts','eqs_cloud_last_server_ms']);
 let _cloudBatchDepth=0;
 let _cloudPushTimer=null;
 let __eqsCloudLastServerMs=0;
 function cloudGetConfig(){
-  try{const r=localStorage.getItem(CLOUD_SYNC_CFG_KEY);return r?JSON.parse(r):null;}catch(e){return null;}
+  try{
+    const r=localStorage.getItem(CLOUD_SYNC_CFG_KEY);
+    if(r){
+      const parsed=JSON.parse(r);
+      if(parsed&&String(parsed.url||'').trim()&&String(parsed.anonKey||'').trim()) return parsed;
+    }
+    const fallback={url:CLOUD_DEFAULT_URL,anonKey:CLOUD_DEFAULT_ANON_KEY,enabled:true};
+    localStorage.setItem(CLOUD_SYNC_CFG_KEY,JSON.stringify(fallback));
+    return fallback;
+  }catch(e){
+    return {url:CLOUD_DEFAULT_URL,anonKey:CLOUD_DEFAULT_ANON_KEY,enabled:true};
+  }
 }
 function cloudSyncEnabled(){
   if(typeof EQS_DEMO!=='undefined'&&EQS_DEMO)return false;
