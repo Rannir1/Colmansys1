@@ -8084,6 +8084,74 @@ function waBtn(phone){
   return btn;
 }
 
+function parseCsvRow(line){
+  const out=[]; let cur=''; let quoted=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){
+      if(quoted&&line[i+1]==='"'){cur+='"';i++;continue;}
+      quoted=!quoted;
+      continue;
+    }
+    if(ch===','&&!quoted){out.push(cur);cur='';continue;}
+    cur+=ch;
+  }
+  out.push(cur);
+  return out.map(v=>String(v||'').trim());
+}
+function normalizeImportedRole(v){
+  const x=String(v||'').trim().toLowerCase();
+  return (x==='admin'||x==='מנהל')?'admin':'student';
+}
+function sanitizeImportedUserRow(raw){
+  const tz=String(raw.tz||'').trim();
+  const name=String(raw.name||'').trim();
+  if(!tz||!name) return null;
+  return {
+    id:tz,
+    tz,
+    name,
+    phone:String(raw.phone||'').trim(),
+    email:String(raw.email||'').trim(),
+    address:String(raw.address||'').trim(),
+    role:normalizeImportedRole(raw.role),
+    year:String(raw.year||'').trim(),
+    password:String(raw.password||'1234').trim()||'1234',
+    _manualAdded:false,
+    _importSource:'csv',
+    extraFields:{}
+  };
+}
+function readUsersFromCsvText(txt){
+  const lines=String(txt||'').replace(/\r/g,'').split('\n').map(l=>l.trim()).filter(Boolean);
+  if(lines.length<2) return {rows:[],count:0};
+  const hdr=parseCsvRow(lines[0]).map(h=>String(h||'').trim().toLowerCase());
+  const col=(k)=>hdr.indexOf(k);
+  if(col('tz')===-1||col('name')===-1){
+    throw new Error('Missing CSV headers. Required: tz,name (optional: phone,email,address,role,year,password)');
+  }
+  const rows=[]; const seen=new Set();
+  for(let i=1;i<lines.length;i++){
+    const c=parseCsvRow(lines[i]);
+    const raw={
+      tz:c[col('tz')]||'',
+      name:c[col('name')]||'',
+      phone:col('phone')>-1?c[col('phone')]:'',
+      email:col('email')>-1?c[col('email')]:'',
+      address:col('address')>-1?c[col('address')]:'',
+      role:col('role')>-1?c[col('role')]:'',
+      year:col('year')>-1?c[col('year')]:'',
+      password:col('password')>-1?c[col('password')]:'',
+    };
+    const u=sanitizeImportedUserRow(raw);
+    if(!u) continue;
+    if(seen.has(u.tz)) continue; // no duplicates inside uploaded file
+    seen.add(u.tz);
+    rows.push(u);
+  }
+  return {rows,count:rows.length};
+}
+
 function renderUsers(){
   const {user,users} = state;
   const isAdmin=user.role==='admin';
@@ -8126,7 +8194,7 @@ function renderUsers(){
         h('td',{style:{fontSize:'12px',color:'var(--text2)'}},u.year||'—'),
         h('td',{style:{fontSize:'12px'}},h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}},h('span',{},u.phone||'—'),waBtn(u.phone))),
         h('td',{style:{fontSize:'12px'}},u.email||'—'),
-        h('td',{},u.role==='admin'?badge('מנהל','badge-blue'):badge('סטודנט','badge-gray')),
+        h('td',{},u.role==='admin'?badge('מנהל','badge-blue'):(u.role==='lecturer'?badge('מרצה','badge-purple'):(u.role==='external'?badge('חיצוני','badge-orange'):badge('סטודנט','badge-gray')))),
         h('td',{},h('div',{class:'flex gap-2'},
           h('button',{class:'btn btn-sm btn-secondary',onclick:()=>openUserModal({...u})},'עריכה'),
           ...(isAdmin&&u.id!==user.id?[h('button',{class:'btn btn-sm btn-danger',onclick:()=>delUser(u.id)},'מחק')]:[])
@@ -8165,6 +8233,90 @@ function renderUsers(){
     searchTimer=setTimeout(rebuildTable,150);
   });
 
+  const importUsersCsv=()=>{
+    if(!isAdmin) return;
+    const ov=h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.72)',zIndex:3000,display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}});
+    const modeSel=h('select',{},
+      h('option',{value:'append'},'הוספה/עדכון לפי ת.ז (כפילות תעודכן)'),
+      h('option',{value:'replace_import_keep_manual'},'ייבוא במקום הרשימה הקיימת ללא מחיקת משתמשים שנוספו באופן ידני'),
+      h('option',{value:'replace'},'ייבוא במקום הרשימה הקיימת')
+    );
+    const box=h('div',{class:'card',style:{width:'min(560px,95vw)',padding:'18px'}},
+      h('h3',{style:{fontSize:'16px',marginBottom:'10px'}},'📂 ייבוא משתמשים (CSV)'),
+      h('div',{style:{fontSize:'12px',color:'var(--text3)',lineHeight:1.5,marginBottom:'10px'}},
+        'פורמט CSV: tz,name,phone,email,address,role,year,password (חובה: tz + name).'
+      ),
+      h('div',{class:'form-group'},h('label',{},'מצב ייבוא'),modeSel),
+      h('div',{style:{display:'flex',gap:'8px',justifyContent:'flex-end',flexWrap:'wrap'}},
+        h('button',{class:'btn btn-secondary',onclick:()=>document.body.removeChild(ov)},'ביטול'),
+        h('button',{class:'btn btn-primary',onclick:()=>{
+          const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';
+          inp.onchange=(e)=>{
+            const f=e.target.files&&e.target.files[0]; if(!f) return;
+            const r=new FileReader();
+            r.onload=(ev)=>{
+              try{
+                const parsed=readUsersFromCsvText(ev.target.result||'');
+                if(!parsed.rows.length){alert('לא נמצאו רשומות תקינות בקובץ.');return;}
+                const mode=modeSel.value;
+                let nextUsers=[];
+                if(mode==='append'){
+                  const existing=(state.users||[]);
+                  const byTz=new Map(existing.map(u=>[String(u.tz||'').trim(),u]));
+                  let added=0,updated=0;
+                  for(const row of parsed.rows){
+                    const importedRow={...row,_manualAdded:false,_importSource:'csv'};
+                    const prev=byTz.get(row.tz);
+                    if(prev){
+                      byTz.set(row.tz,{...importedRow,id:importedRow.id||importedRow.tz,tz:importedRow.tz});
+                      updated++;
+                    }else{
+                      byTz.set(row.tz,importedRow);
+                      added++;
+                    }
+                  }
+                  nextUsers=Array.from(byTz.values());
+                  save(SK.users,nextUsers); setState({users:nextUsers});
+                  alert(`✅ הייבוא הושלם.\nנוספו: ${added}\nעודכנו (כפילויות ת.ז): ${updated}.`);
+                }else if(mode==='replace_import_keep_manual'){
+                  const existing=(state.users||[]);
+                  const byTz=new Map(existing
+                    .filter(u=>u&&(u._manualAdded===true||u.role==='admin'))
+                    .map(u=>[String(u.tz||'').trim(),u]));
+                  for(const row of parsed.rows){
+                    const importedRow={...row,_manualAdded:false,_importSource:'csv'};
+                    byTz.set(importedRow.tz,importedRow); // imported overrides same tz
+                  }
+                  nextUsers=Array.from(byTz.values());
+                  if(!nextUsers.some(u=>u.role==='admin')){
+                    const keepAdmin=(state.users||[]).find(u=>u.role==='admin')||state.user;
+                    nextUsers.unshift({...keepAdmin,id:keepAdmin.tz||keepAdmin.id,tz:keepAdmin.tz||keepAdmin.id,role:'admin'});
+                  }
+                  save(SK.users,nextUsers); setState({users:nextUsers});
+                  alert(`✅ הייבוא הושלם.\nהרשימה הקיימת הוחלפה לפי הקובץ, תוך שמירה על משתמשים שסומנו כידניים (${parsed.rows.length} מהקובץ).`);
+                }else{
+                  nextUsers=[...parsed.rows.map(r=>({...r,_manualAdded:false,_importSource:'csv'}))];
+                  if(!nextUsers.some(u=>u.role==='admin')){
+                    const keepAdmin=(state.users||[]).find(u=>u.role==='admin')||state.user;
+                    nextUsers.unshift({...keepAdmin,id:keepAdmin.tz||keepAdmin.id,tz:keepAdmin.tz||keepAdmin.id,role:'admin'});
+                  }
+                  save(SK.users,nextUsers); setState({users:nextUsers});
+                  alert(`✅ הרשימה הוחלפה. סה\"כ ${nextUsers.length} משתמשים.`);
+                }
+                document.body.removeChild(ov);
+              }catch(err){
+                alert('שגיאה בייבוא CSV: '+err.message);
+              }
+            };
+            r.readAsText(f,'utf-8');
+          };
+          inp.click();
+        }},'בחר קובץ CSV והמשך')
+      )
+    );
+    ov.appendChild(box);document.body.appendChild(ov);
+  };
+
   rebuildTable();
 
   return h('div',{},
@@ -8172,6 +8324,7 @@ function renderUsers(){
     isAdmin?h('div',{class:'search-bar'},
       searchInput,
       h('button',{class:'btn btn-primary',onclick:()=>openUserModal({id:null,tz:'',name:'',password:'1234',role:'student',address:'',phone:'',email:'',extraFields:{}})},'+ הוסף משתמש'),
+      h('button',{class:'btn btn-secondary',onclick:importUsersCsv},'📂 ייבוא משתמשים (CSV)'),
       ...(!EQS_PUBLIC_DEPLOY?[h('button',{class:'btn btn-secondary',onclick:()=>{
         const csv=[['ת.ז','שם','טלפון','אימייל','כתובת','תפקיד','סיסמה'],...users.map(u=>[u.tz,u.name,u.phone,u.email,u.address,u.role,u.password])].map(r=>r.join(',')).join('\n');
         const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));a.download='users.csv';a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);
@@ -8226,7 +8379,7 @@ function renderUserModal(user){
     h('h2',{},user.id?'עריכת משתמש':'הוספת משתמש'),
     h('div',{class:'form-row'},inp('ת.ז *','tz'),inp('שם מלא *','name')),
     h('div',{class:'form-row'},inp('סיסמה','password'),
-      (()=>{const s=h('select',{});[['student','סטודנט'],['admin','מנהל']].forEach(([v,l])=>{const o=h('option',{value:v},l);if(form.role===v)o.selected=true;s.appendChild(o)});s.addEventListener('change',e=>form.role=e.target.value);return h('div',{class:'form-group'},h('label',{},'תפקיד'),s)})()
+      (()=>{const s=h('select',{});[['student','סטודנט'],['admin','מנהל'],['lecturer','מרצה'],['external','חיצוני']].forEach(([v,l])=>{const o=h('option',{value:v},l);if(form.role===v)o.selected=true;s.appendChild(o)});s.addEventListener('change',e=>form.role=e.target.value);return h('div',{class:'form-group'},h('label',{},'תפקיד'),s)})()
     ),
     h('div',{class:'form-row'},inp('טלפון','phone'),inp('אימייל','email')),
     inp('כתובת','address'),
@@ -8235,7 +8388,9 @@ function renderUserModal(user){
       h('button',{class:'btn btn-primary',onclick:()=>{
         if(!form.tz||!form.name){alert('ת.ז ושם הם שדות חובה');return}
         const exists=state.users.find(u=>u.id===form.id);
-        const u2=exists?state.users.map(u=>u.id===form.id?{...form}:u):[...state.users,{...form,id:form.tz||genId()}];
+        const u2=exists
+          ?state.users.map(u=>u.id===form.id?{...u,...form,_manualAdded:(u._manualAdded===true),_importSource:(u._manualAdded===true?'manual':(u._importSource||'manual'))}:u)
+          :[...state.users,{...form,id:form.tz||genId(),_manualAdded:true,_importSource:'manual'}];
         // Update state.user if editing own profile
         const updatedUser=u2.find(u=>u.id===state.user.id)||state.user;
         setState({users:u2,user:updatedUser,modal:null});save(SK.users,u2);
