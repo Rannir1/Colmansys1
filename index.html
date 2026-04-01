@@ -6416,6 +6416,12 @@ function openLoanDetail(o){
             state.modalOnEscape=null;
             setState({orders:orders2,modal:null});save(SK.orders,orders2);
           }},'✓ סמן מוכן'),
+          ...(!lockLoanModal?[h('button',{class:'btn btn-secondary',style:{borderColor:'var(--danger)',color:'var(--danger)',fontSize:'12px'},onclick:()=>{
+            confirmAction('למחוק את כל הרשימה המוכנה? (פריטים נוספים מהמלאי ושורות חופשיות — לא את שורת הפריט הראשי)',()=>{
+              extraItems.length=0;freeTextItems.length=0;
+              autoSave();renderList();
+            });
+          }},'🗑 נקה רשימה')]:[]),
           ...(!lockLoanModal&&(o.status==='לא נלקחה'||o.startDate<=today())?[h('button',{class:'btn btn-secondary',style:{borderColor:'#a78bfa',color:'#a78bfa'},onclick:()=>{
             const newStatus=o.status==='לא נלקחה'?'אושרה':'לא נלקחה';
             const now3=new Date();const ntExtra=newStatus==='לא נלקחה'?{markedNotTakenTime:String(now3.getHours()).padStart(2,'0')+':'+String(now3.getMinutes()).padStart(2,'0'),markedNotTakenDate:localDateISO(now3)}:{markedNotTakenTime:undefined,markedNotTakenDate:undefined};
@@ -6472,12 +6478,6 @@ function openLoanDetail(o){
             msgEl.innerHTML='<div class="alert alert-success">✓ רשימת ההשאלה עודכנה</div>';
             setTimeout(()=>msgEl.innerHTML='',2500);
           }},'💾 שמור עדכון רשימה'),
-          h('button',{class:'btn btn-secondary',style:{borderColor:'var(--danger)',color:'var(--danger)',fontSize:'12px'},onclick:()=>{
-            confirmAction('למחוק את כל הרשימה המוכנה?',()=>{
-              extraItems.length=0;freeTextItems.length=0;
-              autoSaveReturnsUi();renderList();
-            });
-          }},'🗑 נקה רשימה'),
           h('button',{
             class:'btn btn-secondary',
             style:{fontSize:'12px',background:'rgba(16,185,129,0.12)',borderColor:'rgba(16,185,129,0.45)',color:'var(--success)',...(!outR?{opacity:'0.45',cursor:'not-allowed'}:{})},
