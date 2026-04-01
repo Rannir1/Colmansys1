@@ -5526,6 +5526,8 @@ function buildSupplyFormHtml(o){
   <tr><th>${ORDER_PURPOSE_LABEL}</th><td colspan="3">${o.purpose||'—'}</td></tr>
 </table>
 
+${o.digitalSignatureBorrower?`<div class="section-title">חתימה דיגיטלית</div><div style="padding:6px 0"><img src="${o.digitalSignatureBorrower}" alt="חתימה דיגיטלית" style="max-height:90px;max-width:280px;border:1px solid #999;border-radius:4px;background:#fff"></div>`:''}
+
 <div class="section-title">ציוד מושאל</div>
 <table class="items">
   <tr><th>שם הפריט</th><th style="width:130px">ברקוד</th></tr>
@@ -5710,6 +5712,17 @@ function openLoanDetail(o){
   };
   const msgEl=h('div',{});
   const listEl=h('div',{});
+  let listFilterQ='';
+  const listFilterInp=h('input',{type:'search',placeholder:'🔍 חיפוש פנימי ברשימת ההשאלה (שם / ברקוד)...',style:{width:'100%',marginBottom:'6px'}});
+  const applyListFilter=()=>{
+    const q=String(listFilterQ||'').trim().toLowerCase();
+    const rows=[...listEl.children];
+    rows.forEach(row=>{
+      const txt=String(row.textContent||'').toLowerCase();
+      row.style.display=(!q||txt.includes(q))?'':'none';
+    });
+  };
+  listFilterInp.addEventListener('input',e=>{listFilterQ=e.target.value;applyListFilter();});
   const renderList=()=>{
     listEl.innerHTML='';
     const mainItemForDisplay=inventory.find(i=>i.id===o.itemId);
@@ -5827,6 +5840,7 @@ function openLoanDetail(o){
         ));
       });
     }
+    applyListFilter();
   };
   const addBarcode=(bc)=>{
     if(lockLoanModal){
@@ -6339,32 +6353,45 @@ function openLoanDetail(o){
         freeRow.appendChild(h('button',{class:'btn btn-secondary',onclick:addFree},'+ הוסף'));
         return freeRow;
       })(),
-      renderList(),
-      listEl,
-      h('div',{style:{marginTop:'14px'}},
-        h('h3',{style:{fontSize:'13px',fontWeight:'700',marginBottom:'8px'}},'הערות אספקה'),
-        (()=>{
-          if(lockLoanModal){
-            return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'40px'}},supplyNotes||'—');
-          }
-          const ta=h('textarea',{placeholder:'הערות לאספקה, הוראות מיוחדות...',style:{width:'100%',minHeight:'64px',resize:'vertical'}});
-          ta.value=supplyNotes;
-          ta.addEventListener('input',e=>{supplyNotes=e.target.value;autoSave();});
-          return ta;
-        })()
+      h('details',{style:{marginTop:'10px',marginBottom:'4px',padding:'8px',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg3)'}},
+        h('summary',{style:{cursor:'pointer',fontSize:'12px',fontWeight:'700',color:'var(--text2)'}},'🔍 חיפוש פנימי'),
+        h('div',{style:{marginTop:'8px'}},listFilterInp)
       ),
-      h('div',{style:{marginTop:'12px'}},
-        h('h3',{style:{fontSize:'13px',fontWeight:'700',marginBottom:'8px',color:'#ea580c'}},'הערות להחזרה (מנהל)'),
-        h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'6px'}},'נשמרות בפרטי ההזמנה גם אחרי שהציוד הוחזר.'),
-        (()=>{
-          if(lockLoanModal){
-            return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'40px'}},returnNotes||'—');
-          }
-          const ta=h('textarea',{placeholder:'מצב הציוד, חוסרים, תאריך בדיקה, הערות למנהל המחסן...',style:{width:'100%',minHeight:'72px',resize:'vertical',borderColor:'rgba(234,88,12,0.35)',background:'rgba(255,247,237,0.35)'}});
-          ta.value=returnNotes;
-          ta.addEventListener('input',e=>{returnNotes=e.target.value;autoSave();});
-          return ta;
-        })()
+      h('div',{style:{marginTop:'8px',maxHeight:'38vh',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px 10px',background:'rgba(255,255,255,0.01)'}},
+        renderList(),
+        listEl
+      ),
+      h('div',{style:{marginTop:'10px',padding:'8px',border:'1px solid rgba(16,185,129,0.28)',borderRadius:'8px',background:'rgba(16,185,129,0.06)'}},
+        h('div',{style:{fontSize:'12px',fontWeight:'700',color:'var(--success)',marginBottom:'4px'}},'📝 הערות הסטודנט'),
+        h('div',{style:{fontSize:'12px',color:'var(--text2)',whiteSpace:'pre-wrap',lineHeight:1.45}},o.notes||'—')
+      ),
+      h('details',{style:{marginTop:'14px',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px',background:'var(--bg3)'}},
+        h('summary',{style:{cursor:'pointer',fontSize:'13px',fontWeight:'700',color:'var(--text2)'}},'📝 הערות מתקדמות (אספקה והחזרה)'),
+        h('div',{style:{marginTop:'10px'}},
+          h('h3',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px'}},'הערות אספקה'),
+          (()=>{
+            if(lockLoanModal){
+              return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'32px'}},supplyNotes||'—');
+            }
+            const ta=h('textarea',{placeholder:'הערות לאספקה, הוראות מיוחדות...',style:{width:'100%',minHeight:'36px',resize:'vertical'}});
+            ta.value=supplyNotes;
+            ta.addEventListener('input',e=>{supplyNotes=e.target.value;autoSave();});
+            return ta;
+          })()
+        ),
+        h('div',{style:{marginTop:'10px'}},
+          h('h3',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px',color:'#ea580c'}},'הערות להחזרה (מנהל)'),
+          h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'6px'}},'נשמרות בפרטי ההזמנה גם אחרי שהציוד הוחזר.'),
+          (()=>{
+            if(lockLoanModal){
+              return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'32px'}},returnNotes||'—');
+            }
+            const ta=h('textarea',{placeholder:'מצב הציוד, חוסרים, תאריך בדיקה, הערות למנהל המחסן...',style:{width:'100%',minHeight:'40px',resize:'vertical',borderColor:'rgba(234,88,12,0.35)',background:'rgba(255,247,237,0.35)'}});
+            ta.value=returnNotes;
+            ta.addEventListener('input',e=>{returnNotes=e.target.value;autoSave();});
+            return ta;
+          })()
+        )
       ),
       h('div',{style:{marginTop:'10px',padding:'8px',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg3)'}},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',flexWrap:'wrap'}},
