@@ -6361,10 +6361,6 @@ function openLoanDetail(o){
         renderList(),
         listEl
       ),
-      h('div',{style:{marginTop:'10px',padding:'8px',border:'1px solid rgba(16,185,129,0.28)',borderRadius:'8px',background:'rgba(16,185,129,0.06)'}},
-        h('div',{style:{fontSize:'12px',fontWeight:'700',color:'var(--success)',marginBottom:'4px'}},'📝 הערות הסטודנט'),
-        h('div',{style:{fontSize:'12px',color:'var(--text2)',whiteSpace:'pre-wrap',lineHeight:1.45}},o.notes||'—')
-      ),
       h('details',{style:{marginTop:'14px',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px',background:'var(--bg3)'}},
         h('summary',{style:{cursor:'pointer',fontSize:'13px',fontWeight:'700',color:'var(--text2)'}},'📝 הערות מתקדמות (אספקה והחזרה)'),
         h('div',{style:{marginTop:'10px'}},
