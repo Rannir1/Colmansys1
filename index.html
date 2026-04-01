@@ -490,6 +490,8 @@ function orderMatchesListTimeScope(o,scope,rangeFrom,rangeTo){
   const sc=scope||'window';
   if(sc==='all') return true;
   if(!sd) return true;
+  // חשוב: ברירת המחדל «חלון ±30 יום» מסתירה הזמנות עם תאריך שאילה רחוק — כולל ממתינות לאישור (נראה כאילו «נעלמו» למרות מייל והזמנה בנתונים)
+  if(o.status==='מחכה לאישור'||(o._cancelRequest&&o.status!=='נדחתה')) return true;
   if(sc==='past') return sd<t;
   if(sc==='future') return sd>t;
   if(sc==='window'){
@@ -1537,6 +1539,8 @@ function seriesTypeBadgesRow(o){
 /** סינון מסך הזמנות לפי קטגוריית סדרה (state.ordSeriesFilter) */
 function orderMatchesOrdSeriesFilter(o,sf){
   if(!sf||sf==='all') return true;
+  // הזמנה רגילה (בלי תג סדרה) נעלמת אם נשאר סינון «סדרה» מהעבודה הקודמת — ממתינות לאישור חייבות תמיד להופיע
+  if(o.status==='מחכה לאישור'||(o._cancelRequest&&o.status!=='נדחתה')) return true;
   const labs=getSeriesTypeLabels(o);
   if(sf==='series_any') return labs.length>0;
   if(sf==='bulk_week') return !!(o.bulkGroupId&&!o.recurringGroupId&&!o.multiDateGroupId);
@@ -1675,6 +1679,12 @@ function openSeriesOccurrencesManager(anchorOrder,opts){
 async function sha256(str){
   const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+/** תואם סיסמה שמורה (האש SHA-256 או טקסט ישן לפני מיגרציה). */
+function verifyStoredPassword(stored,plain){
+  const p=String(plain||'').trim();
+  if(!p) return Promise.resolve(false);
+  return sha256(p).then(h=>stored===h||stored===p);
 }
 function hashSync(str){
   // Simple non-crypto hash for legacy plain passwords during migration
@@ -3408,6 +3418,7 @@ function renderOrders(){
   if(state.ordersFilter&&state.ordStatus!==state.ordersFilter){
     state.ordStatus=state.ordersFilter;
     state.ordersFilter=null;
+    if(state.ordStatus==='מחכה לאישור') state.ordSeriesFilter='all';
   }
   const ordStatus=state.ordStatus||'all';
   const isAdmin=user.role==='admin';
@@ -3425,7 +3436,7 @@ function renderOrders(){
     if(ordStatus==='cancel_pending'&&!o._cancelRequest) return false;
     else if(ordStatus==='cancel_rejected'&&o.cancelRequestStatus!=='rejected') return false;
     else if(!['all','cancel_pending','cancel_rejected'].includes(ordStatus)&&o.status!==ordStatus) return false;
-    if(ordSearch){const item=invById.get(o.itemId);const u=userById.get(o.userId);if(!item?.name.includes(ordSearch)&&!u?.name.includes(ordSearch)) return false}
+    if(ordSearch){const item=invById.get(o.itemId);const u=userById.get(o.userId);if(!item?.name?.includes(ordSearch)&&!u?.name?.includes(ordSearch)) return false}
     if(!orderMatchesOrdSeriesFilter(o,ordSeriesFilter)) return false;
     if(!orderMatchesListTimeScope(o,ordTimeScope,ordRangeFrom,ordRangeTo)) return false;
     return true;
@@ -3984,7 +3995,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
             if(!t.startTime||!t.endTime||t.startTime>=t.endTime){skippedPast.push(`${fmt(d)} (שעות לא תקינות)`);return;}
             if(d<todayStrP||(d===todayStrP&&t.startTime<currentTimeP)){skippedPast.push(fmt(d));return;}
             if(getConflicts(form.itemId,d,d,t.startTime,t.endTime,null).length>0){skippedBusy.push(fmt(d));return;}
-            newOrdersP.push({...form,startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,id:genId(),orderNum:numP++,itemName:itemP?.name,itemBarcode:itemP?.barcode||'',status:statusP,createdAt:new Date().toISOString(),multiDateGroupId:mdGid,notes:(form.notes||'')+(mdGid?' | סדרת תאריכים נבחרים':'')});
+            newOrdersP.push({...form,startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,id:genId(),orderNum:numP++,itemName:itemP?.name,itemBarcode:itemP?.barcode||'',journalId:itemP?.journalId||'',status:statusP,createdAt:new Date().toISOString(),multiDateGroupId:mdGid,notes:(form.notes||'')+(mdGid?' | סדרת תאריכים נבחרים':'')});
           });
           if(!newOrdersP.length){
             alert('לא נוצרה אף הזמנה.'+(skippedBusy.length?`\nתפוסים: ${skippedBusy.join(', ')}`:'')+(skippedPast.length?`\nתאריך/שעה בעבר: ${skippedPast.join(', ')}`:''));
@@ -3994,6 +4005,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           if(skipTot>0&&!confirm(`${skipTot} תאריכים יודלגו (תפוס או שעה עברה). ליצור ${newOrdersP.length} הזמנות?`))return;
           const allP=[...state.orders,...newOrdersP];
           setState({orders:allP,modal:null});save(SK.orders,allP);
+          try{logActivity('יצירת הזמנות',`${newOrdersP.length} הזמנות · מס׳ ${newOrdersP.map(o=>o.orderNum).join(', ')} · ${statusP}`,newOrdersP[0]?.id);}catch(e){}
           if(!isAdmin&&statusP==='מחכה לאישור'){
             const settings=state.settings||{};
             if(settings.emailNotificationsEnabled&&settings.emailjsServiceId&&settings.emailjsPublicKey&&window.emailjs){
@@ -4035,9 +4047,10 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
         const item=inventory.find(i=>i.id===form.itemId);
         const status=isAdmin?'אושרה':'מחכה לאישור';
         if(!recurring.enabled){
-          const newOrder={...form,id:genId(),orderNum:nextOrderNum(),itemName:item?.name,itemBarcode:item?.barcode||'',status,createdAt:new Date().toISOString()};
+          const newOrder={...form,id:genId(),orderNum:nextOrderNum(),itemName:item?.name,itemBarcode:item?.barcode||'',journalId:item?.journalId||'',status,createdAt:new Date().toISOString()};
           const orders=[...state.orders,newOrder];
           setState({orders,modal:null});save(SK.orders,orders);
+          try{logActivity('יצירת הזמנה',`#${newOrder.orderNum} · ${item?.name||'—'} · ${status}`,newOrder.id);}catch(e){}
           // Send email to admin when student creates order
           if(!isAdmin&&status==='מחכה לאישור'){
             const settings=state.settings||{};
@@ -4081,7 +4094,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           const pushOne=(sd,ed)=>{
             const busy=getConflicts(form.itemId,sd,ed,form.startTime,form.endTime,null).length>0;
             if(busy){skipped.push(fmtD(sd));}
-            else{newOrders.push({...form,id:genId(),orderNum:ordN++,startDate:sd,endDate:ed,itemName:item?.name,itemBarcode:item?.barcode||'',status,createdAt:new Date().toISOString(),recurringGroupId:groupId});}
+            else{newOrders.push({...form,id:genId(),orderNum:ordN++,startDate:sd,endDate:ed,itemName:item?.name,itemBarcode:item?.barcode||'',journalId:item?.journalId||'',status,createdAt:new Date().toISOString(),recurringGroupId:groupId});}
           };
           if(recurring.mode==='times'){
             let w=0,slots=0;
@@ -4140,6 +4153,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           }
           const allOrders=[...state.orders,...newOrders];
           setState({orders:allOrders,modal:null});save(SK.orders,allOrders);
+          try{logActivity('יצירת הזמנות מחזוריות',`${newOrders.length} הזמנות · מס׳ ${newOrders.map(o=>o.orderNum).join(', ')} · ${status}`,newOrders[0]?.id);}catch(e){}
           alert(`✅ נוצרו ${newOrders.length} הזמנות מחזוריות!`);
         }
       }},h('span',{id:'_submitOrderBtn'},'שלח הזמנה'))
@@ -4962,6 +4976,7 @@ function renderOrderDetailModal(order){
   }
   const item=inventory.find(i=>i.id===order.itemId);
   const u=users.find(u=>u.id===order.userId)||{name:getUserName(order.userId),id:order.userId};
+  const orderForDisplay=state.orders.find(x=>x.id===order.id)||order;
   let adminNotes=order.adminNotes||'';
   const closeModal=()=>{
     const live=state.orders.find(x=>x.id===order.id)||order;
@@ -5037,7 +5052,7 @@ function renderOrderDetailModal(order){
     }
   };
   const item2=inventory.find(i=>i.id===order.itemId);
-  const orderCreatedAtTxt=order.createdAt?new Date(order.createdAt).toLocaleString('he-IL'):'—';
+  const orderCreatedAtTxt=orderForDisplay.createdAt?new Date(orderForDisplay.createdAt).toLocaleString('he-IL'):'—';
   const orderDesc=`${item2?.name||order.itemName||'—'} | ${hebrewDate(order.startDate)} ${order.startTime||''}–${order.endTime||''}`;
   const isPending=order.status==='מחכה לאישור';
   const isExtension=!!(order._isExtensionRequest&&order._originalEndDate);
@@ -5869,6 +5884,8 @@ function openLoanDetail(o){
   };
   const item=inventory.find(i=>i.id===o.itemId);
   const u=users.find(u=>u.id===o.userId);
+  const oForHeader=state.orders.find(x=>x.id===o.id)||o;
+  const orderPlacedAtTxt=oForHeader.createdAt?new Date(oForHeader.createdAt).toLocaleString('he-IL'):'—';
   const checkItemAvailable=(override)=>{
     const slotOrder=state.orders.find(x=>x.id===o.id)||o;
     const sd=override?.startDate||slotOrder.startDate;
@@ -6117,6 +6134,7 @@ function openLoanDetail(o){
           h('span',{},`שאילה: `,hebrewDateEl(o.startDate,o.startTime||'')),
           h('span',{},`החזרה מתוכננת: `,hebrewDateEl(o.endDate,o.endTime||''))
         ),
+        h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'6px'}},`תאריך ביצוע ההזמנה: ${orderPlacedAtTxt}`),
         o.status==='הוחזר'?h('div',{style:{fontSize:'13px',fontWeight:'700',color:'var(--warning)',marginTop:'6px',background:'rgba(245,158,11,0.1)',borderRadius:'6px',padding:'6px 10px'}},
           o.actualReturnDate?`✅ הוחזרה בפועל: ${fmt(o.actualReturnDate)} ${o.actualReturnTime||''}`:`✅ הוחזרה בפועל: ${fmt(o.endDate)} ${o.endTime||''} (מתוכנן)`
         ):o.status==='לא נלקחה'?h('div',{style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa',marginTop:'6px',background:'rgba(167,139,250,0.12)',borderRadius:'6px',padding:'6px 10px'}},
@@ -8509,13 +8527,47 @@ function renderUsers(){
 
 function openMyProfileModal(){
   const user=state.user;
-  let form={phone:user.phone||'',email:user.email||'',address:user.address||''};
+  const full=state.users.find(u=>u.id===user.id)||user;
+  let form={phone:full.phone||'',email:full.email||'',address:full.address||''};
+  let passCur='',passNew='',passNew2='';
   const close=()=>setState({modal:null});
   const overlay=h('div',{class:'modal-overlay'});
   const inp=(lbl,key,type='text',placeholder='')=>{
     const i=h('input',{type,value:form[key],placeholder});
     i.addEventListener('input',e=>form[key]=e.target.value);
     return h('div',{class:'form-group'},h('label',{},lbl),i);
+  };
+  const passInp=(lbl,valRef,setRef,ph)=>{
+    const i=h('input',{type:'password',value:valRef,placeholder:ph});
+    i.addEventListener('input',e=>setRef(e.target.value));
+    return h('div',{class:'form-group'},h('label',{},lbl),i);
+  };
+  const doSave=()=>{
+    const np=passNew.trim(),np2=passNew2.trim(),pc=passCur.trim();
+    const apply=(pwdHash)=>{
+      const u2=state.users.map(u=>{
+        if(u.id!==user.id) return u;
+        const next={...u,phone:form.phone,email:form.email,address:form.address};
+        if(pwdHash!==undefined) next.password=pwdHash;
+        return next;
+      });
+      const updatedUser=u2.find(u=>u.id===user.id);
+      state.users=u2;state.user=updatedUser;
+      save(SK.users,u2);
+      setState({modal:null});
+    };
+    if(np||np2){
+      if(np!==np2){alert('הסיסמה החדשה ואימות הסיסמה אינם תואמים');return;}
+      if(np.length<4){alert('סיסמה חדשה חייבת להכיל לפחות 4 תווים');return;}
+      if(!pc){alert('יש להזין את הסיסמה הנוכחית כדי לשנות סיסמה');return;}
+      verifyStoredPassword(full.password,pc).then(ok=>{
+        if(!ok){alert('סיסמה נוכחית שגויה');return;}
+        sha256(np).then(apply);
+      });
+      return;
+    }
+    if(pc){alert('הוזנה סיסמה נוכחית בלי סיסמה חדשה — נקה את השדה או מלא סיסמה חדשה ואימות');return;}
+    apply(undefined);
   };
   const modal=h('div',{class:'modal'},
     h('h2',{},'👤 הפרופיל שלי'),
@@ -8526,15 +8578,16 @@ function openMyProfileModal(){
     inp('📱 טלפון','phone','tel','050-0000000'),
     inp('📧 אימייל','email','email','name@example.com'),
     inp('🏠 כתובת','address','text','עיר, רחוב'),
+    h('div',{class:'form-group',style:{marginTop:'14px',paddingTop:'12px',borderTop:'1px solid var(--border)'}},
+      h('div',{style:{fontWeight:'700',fontSize:'13px',marginBottom:'8px'}},'שינוי סיסמה (אופציונלי)'),
+      h('div',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px',lineHeight:1.45}},'לשינוי סיסמה: הזן סיסמה נוכחית, סיסמה חדשה ואימות. השאר ריק אם אינך משנה סיסמה.')
+    ),
+    passInp('🔒 סיסמה נוכחית',passCur,v=>{passCur=v;},'נדרש רק כשמשנים סיסמה'),
+    passInp('✨ סיסמה חדשה',passNew,v=>{passNew=v;},'לפחות 4 תווים'),
+    passInp('✔ אימות סיסמה חדשה',passNew2,v=>{passNew2=v;},'הקלד שוב את הסיסמה החדשה'),
     h('div',{class:'modal-footer'},
       h('button',{class:'btn btn-secondary',onclick:close},'ביטול'),
-      h('button',{class:'btn btn-primary',onclick:()=>{
-        const u2=state.users.map(u=>u.id===user.id?{...u,phone:form.phone,email:form.email,address:form.address}:u);
-        const updatedUser={...user,phone:form.phone,email:form.email,address:form.address};
-        state.users=u2;state.user=updatedUser;
-        save(SK.users,u2);
-        setState({modal:null});
-      }},'💾 שמור')
+      h('button',{class:'btn btn-primary',onclick:doSave},'💾 שמור')
     )
   );
   overlay.appendChild(modal);
@@ -8580,7 +8633,9 @@ function renderUserModal(user){
 // ============================================================
 function renderMyProfile(){
   const {user} = state;
+  const uStored=state.users.find(x=>x.id===user.id)||user;
   let form={...user};
+  let passCur='',passNew='',passNew2='';
   const msgEl=h('div',{});
   const isProfAdmin=user.role==='admin';
   let emailEventRules={...(user.emailEventRules||{})};
@@ -8594,12 +8649,34 @@ function renderMyProfile(){
   const save2=()=>{
     if(!form.name){msgEl.innerHTML='<div class="alert alert-danger">שם הוא שדה חובה</div>';return;}
     form.emailEventRules=emailEventRules;
-    const u2=state.users.map(u=>u.id===user.id?{...form}:u);
-    state.users=u2;state.user={...form};
-    save(SK.users,u2);
-    msgEl.innerHTML='<div class="alert alert-success">✓ הפרטים עודכנו בהצלחה</div>';
-    setTimeout(()=>msgEl.innerHTML='',2500);
-    render();
+    const np=passNew.trim(),np2=passNew2.trim(),pc=passCur.trim();
+    const finish=(pwdHash)=>{
+      const u2=state.users.map(u=>{
+        if(u.id!==user.id) return u;
+        const next={...u,...form,emailEventRules};
+        next.password=pwdHash!==undefined?pwdHash:u.password;
+        return next;
+      });
+      const updated=u2.find(x=>x.id===user.id);
+      state.users=u2;state.user=updated;
+      save(SK.users,u2);
+      msgEl.innerHTML='<div class="alert alert-success">✓ הפרטים עודכנו בהצלחה</div>';
+      setTimeout(()=>msgEl.innerHTML='',2500);
+      passCur=passNew=passNew2='';
+      render();
+    };
+    if(np||np2){
+      if(np!==np2){msgEl.innerHTML='<div class="alert alert-danger">הסיסמה החדשה ואימות הסיסמה אינם תואמים</div>';return;}
+      if(np.length<4){msgEl.innerHTML='<div class="alert alert-danger">סיסמה חדשה חייבת להכיל לפחות 4 תווים</div>';return;}
+      if(!pc){msgEl.innerHTML='<div class="alert alert-danger">יש להזין את הסיסמה הנוכחית כדי לשנות סיסמה</div>';return;}
+      verifyStoredPassword(uStored.password,pc).then(ok=>{
+        if(!ok){msgEl.innerHTML='<div class="alert alert-danger">סיסמה נוכחית שגויה</div>';return;}
+        sha256(np).then(finish);
+      });
+      return;
+    }
+    if(pc){msgEl.innerHTML='<div class="alert alert-danger">הוזנה סיסמה נוכחית בלי סיסמה חדשה — נקה את השדה או מלא סיסמה חדשה ואימות</div>';return;}
+    finish(undefined);
   };
 
   return h('div',{},
@@ -8639,13 +8716,12 @@ function renderMyProfile(){
           chk('cancelRejected','מייל על דחיית בקשת ביטול')
         ]);})()
       ),
-      h('div',{class:'form-group'},
-        h('label',{},'שינוי סיסמה'),
-        (()=>{
-          const i=h('input',{type:'password',placeholder:'השאר ריק לשמירת הסיסמה הנוכחית'});
-          i.addEventListener('input',e=>{if(e.target.value) form.password=e.target.value;});
-          return i;
-        })()
+      h('div',{class:'form-group',style:{marginTop:'12px',paddingTop:'14px',borderTop:'1px solid var(--border)'}},
+        h('div',{style:{fontWeight:'700',marginBottom:'8px'}},'שינוי סיסמה'),
+        h('div',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'10px',lineHeight:1.45}},'מילוי רק כשמשנים סיסמה: סיסמה נוכחית, סיסמה חדשה ואימות. מושבתים — נשארת הסיסמה הקיימת.'),
+        (()=>{const i=h('input',{type:'password',placeholder:'סיסמה נוכחית'});i.addEventListener('input',e=>{passCur=e.target.value;});return h('div',{class:'form-group'},h('label',{},'סיסמה נוכחית'),i);})(),
+        (()=>{const i=h('input',{type:'password',placeholder:'סיסמה חדשה (לפחות 4 תווים)'});i.addEventListener('input',e=>{passNew=e.target.value;});return h('div',{class:'form-group'},h('label',{},'סיסמה חדשה'),i);})(),
+        (()=>{const i=h('input',{type:'password',placeholder:'הקלד שוב את הסיסמה החדשה'});i.addEventListener('input',e=>{passNew2=e.target.value;});return h('div',{class:'form-group'},h('label',{},'אימות סיסמה חדשה'),i);})()
       ),
       h('div',{class:'modal-footer',style:{justifyContent:'flex-start'}},
         h('button',{class:'btn btn-primary',onclick:save2},'💾 שמור שינויים')
@@ -8685,7 +8761,7 @@ function renderMyReports(){
     const tbl=h('table',{});
     tbl.appendChild(h('thead',{},h('tr',{},
       h('th',{},'#'),h('th',{},'פריט ראשי'),h('th',{},'ברקוד'),h('th',{},'יומן'),
-      h('th',{},'תאריך שאילה'),h('th',{},'תאריך החזרה'),h('th',{},ORDER_PURPOSE_LABEL),h('th',{},'סטטוס'),h('th',{},'הוחזר בפועל')
+      h('th',{},'תאריך ביצוע ההזמנה'),h('th',{},'תאריך שאילה'),h('th',{},'תאריך החזרה'),h('th',{},ORDER_PURPOSE_LABEL),h('th',{},'סטטוס'),h('th',{},'הוחזר בפועל')
     )));
     const tbody=h('tbody',{});
     f.forEach(o=>{
@@ -8696,6 +8772,7 @@ function renderMyReports(){
         h('td',{style:{fontWeight:'600',fontSize:'12px'}},it?.name||o.itemName||'—'),
         h('td',{},h('code',{style:{fontSize:'11px'}},it?.barcode||'—')),
         h('td',{style:{fontSize:'11px',color:'var(--text3)'}},jName),
+        h('td',{style:{fontSize:'11px',color:'var(--text3)',whiteSpace:'nowrap'}},o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'),
         h('td',{style:{fontSize:'12px'}},`${fmt(o.startDate)} ${o.startTime||''}`),
         h('td',{style:{fontSize:'12px'}},`${fmt(o.endDate)} ${o.endTime||''}`),
         h('td',{style:{fontSize:'12px',maxWidth:'120px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},o.purpose||'—'),
@@ -8711,7 +8788,7 @@ function renderMyReports(){
     const rows=f.map(o=>{
       const it=inventory.find(i=>i.id===o.itemId);
       const jName=journals.find(j=>j.id===it?.journalId)?.name||'—';
-      return `<tr><td>${o.orderNum||'—'}</td><td>${it?.name||o.itemName||'—'}</td><td>${it?.barcode||'—'}</td><td>${jName}</td><td>${fmt(o.startDate)} ${o.startTime||''}</td><td>${fmt(o.endDate)} ${o.endTime||''}</td><td>${o.purpose||'—'}</td><td>${o.status}</td><td>${o.actualReturnDate?fmt(o.actualReturnDate)+' '+(o.actualReturnTime||''):'—'}</td></tr>`;
+      return `<tr><td>${o.orderNum||'—'}</td><td>${it?.name||o.itemName||'—'}</td><td>${it?.barcode||'—'}</td><td>${jName}</td><td>${o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'}</td><td>${fmt(o.startDate)} ${o.startTime||''}</td><td>${fmt(o.endDate)} ${o.endTime||''}</td><td>${o.purpose||'—'}</td><td>${o.status}</td><td>${o.actualReturnDate?fmt(o.actualReturnDate)+' '+(o.actualReturnTime||''):'—'}</td></tr>`;
     }).join('');
     const logoSrc=localStorage.getItem('eqs_logo_src')||'';
     const html=`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>הדוחות שלי</title>
@@ -8720,17 +8797,18 @@ function renderMyReports(){
     <div class="header"><div><div class="header-title">היסטוריית השאלות — ${user.name}</div><div class="header-sub">בית הספר לתקשורת | הופק: ${new Date().toLocaleDateString('he-IL')}</div></div>${logoSrc?`<img src="${logoSrc}" class="logo" alt="לוגו">`:''}
     </div>
     <div style="font-size:12px;color:#555;margin-bottom:8px">סה"כ: ${f.length} הזמנות</div>
-    <table><thead><tr><th>#</th><th>פריט ראשי</th><th>ברקוד</th><th>יומן</th><th>תאריך שאילה</th><th>תאריך החזרה</th><th>${ORDER_PURPOSE_LABEL}</th><th>סטטוס</th><th>הוחזר בפועל</th></tr></thead><tbody>${rows}</tbody></table>
+    <table><thead><tr><th>#</th><th>פריט ראשי</th><th>ברקוד</th><th>יומן</th><th>תאריך ביצוע ההזמנה</th><th>תאריך שאילה</th><th>תאריך החזרה</th><th>${ORDER_PURPOSE_LABEL}</th><th>סטטוס</th><th>הוחזר בפועל</th></tr></thead><tbody>${rows}</tbody></table>
     <script>window.onload=()=>window.print();<\/script></body></html>`;
     const w=window.open('','_blank');if(!w){alert('חסום על ידי הדפדפן. אפשר חלונות קופצים ונסה שנית.');return;}w.document.write(html);w.document.close();
   };
 
   const exportMyCSV=(f)=>{
-    const csv=[['#הזמנה','פריט ראשי','ברקוד','יומן','תאריך שאילה','שעת שאילה','תאריך החזרה','שעת החזרה',ORDER_PURPOSE_LABEL,'סטטוס','הוחזר בפועל','הערות'],
+    const csv=[['#הזמנה','פריט ראשי','ברקוד','יומן','תאריך ביצוע ההזמנה','תאריך שאילה','שעת שאילה','תאריך החזרה','שעת החזרה',ORDER_PURPOSE_LABEL,'סטטוס','הוחזר בפועל','הערות'],
       ...f.map(o=>{
         const it=inventory.find(i=>i.id===o.itemId);
         const jName=journals.find(j=>j.id===it?.journalId)?.name||'';
-        return[o.orderNum||'',it?.name||o.itemName||'',it?.barcode||'',jName,o.startDate,o.startTime||'',o.endDate,o.endTime||'',o.purpose||'',o.status,o.actualReturnDate?(o.actualReturnDate+' '+(o.actualReturnTime||'')):'',( o.notes||'').replace(/,/g,' ')];
+        const placed=o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'';
+        return[o.orderNum||'',it?.name||o.itemName||'',it?.barcode||'',jName,placed,o.startDate,o.startTime||'',o.endDate,o.endTime||'',o.purpose||'',o.status,o.actualReturnDate?(o.actualReturnDate+' '+(o.actualReturnTime||'')):'',( o.notes||'').replace(/,/g,' ')];
       })
     ].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');
