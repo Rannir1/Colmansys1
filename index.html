@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="he">
+<html dir="rtl" lang="he" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -777,6 +777,24 @@ let state = {
   hiddenJournals: JSON.parse(localStorage.getItem('eqs_hiddenJournals')||'[]'),
 };
 
+function normalizeOrdersCreatedAt(orders){
+  let changed=false;
+  const nowIso=new Date().toISOString();
+  const next=(Array.isArray(orders)?orders:[]).map(o=>{
+    if(o&&o.createdAt) return o;
+    changed=true;
+    return {...o,createdAt:nowIso};
+  });
+  return {orders:next,changed};
+}
+{
+  const n=normalizeOrdersCreatedAt(state.orders);
+  if(n.changed){
+    state.orders=n.orders;
+    save(SK.orders,n.orders);
+  }
+}
+
 function hydrateStateFromStorageAndRender(){
   const uid=state.user&&state.user.id;
   const adminSwitched=state._adminUser&&state._adminUser.id;
@@ -792,6 +810,13 @@ function hydrateStateFromStorageAndRender(){
     deletedOrders:load(SK.deletedOrders,[]),
     hiddenJournals:JSON.parse(localStorage.getItem('eqs_hiddenJournals')||'[]'),
   });
+  {
+    const n=normalizeOrdersCreatedAt(state.orders);
+    if(n.changed){
+      state.orders=n.orders;
+      save(SK.orders,n.orders);
+    }
+  }
   const s2=load(SK.settings,{});
   if(s2.emailjsPublicKey&&window.emailjs)window.emailjs.init({publicKey:s2.emailjsPublicKey});
   if(uid){
@@ -2019,7 +2044,15 @@ const statusColor=(s)=>({'"מחכה לאישור"':'#3b82f6','מחכה לאיש�
 
 function h(tag, attrs, ...children){
   const el = document.createElement(tag);
-  if(attrs) Object.entries(attrs).forEach(([k,v])=>{
+  if(attrs){
+    if(tag==='input'){
+      const t=String(attrs.type||'').toLowerCase();
+      if(t==='date'||t==='time'||t==='datetime-local'){
+        if(attrs.lang==null) attrs={...attrs,lang:'he'};
+        if(attrs.translate==null) attrs={...attrs,translate:'no'};
+      }
+    }
+    Object.entries(attrs).forEach(([k,v])=>{
     if(k==='class') el.className=v;
     else if(k==='style'&&typeof v==='object') Object.assign(el.style,v);
     else if(k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(),v);
@@ -2029,6 +2062,7 @@ function h(tag, attrs, ...children){
     else if(k==='value'&&el.tagName!=='INPUT') el.value=v;
     else el.setAttribute(k,v);
   });
+  }
   children.flat(Infinity).forEach(c=>{
     if(c==null||c===false||c===undefined) return;
     el.appendChild(typeof c==='string'||typeof c==='number'?document.createTextNode(String(c)):c);
@@ -3634,12 +3668,30 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     rebuildItemSel();
     // Keep picked-dates availability table in sync with every time/date change.
     rebuildPickedBody();
+    const now=new Date();
+    const todayStr=today();
+    const currentTime=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const startPast=form.startDate<todayStr||(form.startDate===todayStr&&String(form.startTime||'00:00')<currentTime);
+    const endPast=form.endDate<todayStr||(form.endDate===todayStr&&String(form.endTime||'00:00')<=currentTime);
+    const submitBtn=(()=>{const s=document.getElementById('_submitOrderBtn');return s&&s.closest?s.closest('button'):null;})();
+    if(startPast||endPast){
+      const msg=startPast
+        ? `⏰ שעת השאילה (${fmt(form.startDate)} ${form.startTime||'00:00'}) כבר עברה. יש לבחור שעה עתידית.`
+        : `⚠️ שעת ההחזרה (${fmt(form.endDate)} ${form.endTime||'00:00'}) כבר עברה. יש לבחור מועד עתידי.`;
+      conflictMsgEl.innerHTML=`<div class="alert alert-danger">${msg}</div>`;
+      if(submitBtn){submitBtn.disabled=true;submitBtn.style.opacity='0.45';submitBtn.style.cursor='not-allowed';}
+      updateWarehousePreview();
+      updateOrderBorrowReturnDayLines();
+      return;
+    }
     const c=checkConflict();
     if(c){
       const u2=users.find(u=>u.id===c[0].userId);
       conflictMsgEl.innerHTML=`<div class="alert alert-danger">⚠️ הפריט תפוס! (${u2?.name||'סטודנט'}: ${fmt(c[0].startDate)} ${c[0].startTime||''}–${c[0].endTime||''})</div>`;
+      if(submitBtn){submitBtn.disabled=true;submitBtn.style.opacity='0.45';submitBtn.style.cursor='not-allowed';}
     } else {
       conflictMsgEl.innerHTML='';
+      if(submitBtn){submitBtn.disabled=false;submitBtn.style.opacity='';submitBtn.style.cursor='';}
     }
     updateWarehousePreview();
     updateOrderBorrowReturnDayLines();
@@ -3932,7 +3984,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
             if(!t.startTime||!t.endTime||t.startTime>=t.endTime){skippedPast.push(`${fmt(d)} (שעות לא תקינות)`);return;}
             if(d<todayStrP||(d===todayStrP&&t.startTime<currentTimeP)){skippedPast.push(fmt(d));return;}
             if(getConflicts(form.itemId,d,d,t.startTime,t.endTime,null).length>0){skippedBusy.push(fmt(d));return;}
-            newOrdersP.push({...form,startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,id:genId(),orderNum:numP++,itemName:itemP?.name,itemBarcode:itemP?.barcode||'',status:statusP,createdAt:today(),multiDateGroupId:mdGid,notes:(form.notes||'')+(mdGid?' | סדרת תאריכים נבחרים':'')});
+            newOrdersP.push({...form,startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,id:genId(),orderNum:numP++,itemName:itemP?.name,itemBarcode:itemP?.barcode||'',status:statusP,createdAt:new Date().toISOString(),multiDateGroupId:mdGid,notes:(form.notes||'')+(mdGid?' | סדרת תאריכים נבחרים':'')});
           });
           if(!newOrdersP.length){
             alert('לא נוצרה אף הזמנה.'+(skippedBusy.length?`\nתפוסים: ${skippedBusy.join(', ')}`:'')+(skippedPast.length?`\nתאריך/שעה בעבר: ${skippedPast.join(', ')}`:''));
@@ -3965,14 +4017,11 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           const now=new Date();const todayStr=today();
           const currentTime=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
           if(form.startDate<todayStr||(form.startDate===todayStr&&form.startTime<currentTime)){
-            conflictMsgEl.innerHTML=`<div class="alert alert-danger" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><span>⏰ שעת השאילה (${form.startTime}) קודמת לשעה הנוכחית (${currentTime}). האם להמשיך בכל זאת?</span><button class="btn btn-sm btn-danger" id="_pastTimeConfirm">אישור — המשך</button></div>`;
-            setTimeout(()=>{const b=document.getElementById('_pastTimeConfirm');if(b)b.onclick=()=>{conflictMsgEl.innerHTML='';conflictMsgEl.dataset.bypassPast='1';document.getElementById('_submitOrderBtn')?.click();};},30);
-            if(!conflictMsgEl.dataset.bypassPast) return;
-            delete conflictMsgEl.dataset.bypassPast;
+            conflictMsgEl.innerHTML=`<div class="alert alert-danger">⏰ שעת השאילה (${fmt(form.startDate)} ${form.startTime}) כבר עברה. יש לבחור שעה עתידית.</div>`;
+            return;
           }
           if(form.endDate<todayStr||(form.endDate===todayStr&&form.endTime<=currentTime)){
-            conflictMsgEl.innerHTML=`<div class="alert alert-danger" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap"><span>⚠️ שעת ההחזרה (${fmt(form.endDate)} ${form.endTime}) כבר עברה — האם להמשיך?</span><button class="btn btn-sm btn-danger" id="_endPassedConfirm">אישור — המשך</button></div>`;
-            setTimeout(()=>{const b=document.getElementById('_endPassedConfirm');if(b)b.onclick=()=>{conflictMsgEl.innerHTML='';conflictMsgEl.dataset.bypass='1';document.getElementById('_submitOrderBtn')?.click();};},30);
+            conflictMsgEl.innerHTML=`<div class="alert alert-danger">⚠️ שעת ההחזרה (${fmt(form.endDate)} ${form.endTime}) כבר עברה. יש לבחור מועד עתידי.</div>`;
             return;
           }
         }
@@ -3986,7 +4035,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
         const item=inventory.find(i=>i.id===form.itemId);
         const status=isAdmin?'אושרה':'מחכה לאישור';
         if(!recurring.enabled){
-          const newOrder={...form,id:genId(),orderNum:nextOrderNum(),itemName:item?.name,itemBarcode:item?.barcode||'',status,createdAt:today()};
+          const newOrder={...form,id:genId(),orderNum:nextOrderNum(),itemName:item?.name,itemBarcode:item?.barcode||'',status,createdAt:new Date().toISOString()};
           const orders=[...state.orders,newOrder];
           setState({orders,modal:null});save(SK.orders,orders);
           // Send email to admin when student creates order
@@ -4032,7 +4081,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           const pushOne=(sd,ed)=>{
             const busy=getConflicts(form.itemId,sd,ed,form.startTime,form.endTime,null).length>0;
             if(busy){skipped.push(fmtD(sd));}
-            else{newOrders.push({...form,id:genId(),orderNum:ordN++,startDate:sd,endDate:ed,itemName:item?.name,itemBarcode:item?.barcode||'',status,createdAt:today(),recurringGroupId:groupId});}
+            else{newOrders.push({...form,id:genId(),orderNum:ordN++,startDate:sd,endDate:ed,itemName:item?.name,itemBarcode:item?.barcode||'',status,createdAt:new Date().toISOString(),recurringGroupId:groupId});}
           };
           if(recurring.mode==='times'){
             let w=0,slots=0;
@@ -4360,7 +4409,7 @@ function renderRecurringModal(preItemId, journalId, preDate){
           purpose:form.purpose,
           notes:'הזמנה מחזורית',
           status:'אושרה',
-          createdAt:today(),
+          createdAt:new Date().toISOString(),
           recurringGroupId:groupId
         }));
         const allOrders=[...state.orders,...newOrders];
@@ -4768,6 +4817,19 @@ function renderEditOrderModal(order, prevModal){
       h('button',{class:'btn btn-secondary',onclick:()=>{if(prevModal){state.modal=prevModal;setState({});}else closeModal();}},'↩ חזור'),
       h('button',{class:'btn btn-primary',onclick:()=>{
         if(!form.itemId||!form.startDate){alert('נא למלא שדות חובה');return;}
+        {
+          const now=new Date();
+          const todayStr=today();
+          const currentTime=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+          if(form.startDate<todayStr||(form.startDate===todayStr&&String(form.startTime||'00:00')<currentTime)){
+            alert('לא ניתן לשמור עריכה כשהשאילה במועד עבר. יש לבחור תאריך/שעה עתידיים.');
+            return;
+          }
+          if(form.endDate<todayStr||(form.endDate===todayStr&&String(form.endTime||'00:00')<=currentTime)){
+            alert('לא ניתן לשמור עריכה כשההחזרה במועד עבר. יש לבחור תאריך/שעה עתידיים.');
+            return;
+          }
+        }
         if(isOrderReturnBeforeStart(form.startDate,form.startTime,form.endDate,form.endTime)){alert('תאריך ושעת ההחזרה חייבים להיות אחרי מועד השאילה (לא ניתן לאשר הזמנה עם החזרה לפני השאילה).');return;}
         if(form.startDate===form.endDate&&form.startTime>=form.endTime){alert('שעת ההחזרה חייבת להיות אחרי שעת השאילה');return;}
         if(isActiveLoan && isEndInPast(form.endDate,form.endTime)){
@@ -4975,6 +5037,7 @@ function renderOrderDetailModal(order){
     }
   };
   const item2=inventory.find(i=>i.id===order.itemId);
+  const orderCreatedAtTxt=order.createdAt?new Date(order.createdAt).toLocaleString('he-IL'):'—';
   const orderDesc=`${item2?.name||order.itemName||'—'} | ${hebrewDate(order.startDate)} ${order.startTime||''}–${order.endTime||''}`;
   const isPending=order.status==='מחכה לאישור';
   const isExtension=!!(order._isExtensionRequest&&order._originalEndDate);
@@ -5037,6 +5100,7 @@ function renderOrderDetailModal(order){
       ),
         h('div',{},h('div',{class:'text-sm text-muted'},'תאריך שאילה'),hebrewDateEl(order.startDate,order.startTime||'')),
         h('div',{},h('div',{class:'text-sm text-muted'},isReturned?'תאריך החזרה מתוכננת':'תאריך החזרה'),hebrewDateEl(order.endDate,order.endTime||'')),
+        h('div',{},h('div',{class:'text-sm text-muted'},'תאריך ביצוע ההזמנה'),h('div',{style:{marginTop:'3px'}},orderCreatedAtTxt)),
         ...(isReturned?[
           h('div',{style:{gridColumn:'1/-1'}},
             h('div',{class:'text-sm text-muted'},'הוחזרה בפועל'),
@@ -5457,6 +5521,7 @@ function buildSupplyFormHtml(o){
 
 <div class="section-title">פרטי ההשאלה</div>
 <table class="info">
+  <tr><th>תאריך ביצוע הזמנה</th><td>${o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'}</td><th>תאריך הפקה</th><td>${new Date().toLocaleString('he-IL')}</td></tr>
   <tr><th>תאריך שאילה</th><td>${fmt(o.startDate)} &nbsp; ${o.startTime||''}</td><th>תאריך החזרה</th><td>${fmt(o.endDate)} &nbsp; ${o.endTime||''}</td></tr>
   <tr><th>${ORDER_PURPOSE_LABEL}</th><td colspan="3">${o.purpose||'—'}</td></tr>
 </table>
@@ -5554,15 +5619,16 @@ function openLoanDetail(o){
   })();
   let supplyNotes=o.supplyNotes||'';
   let returnNotes=o.returnNotes||'';
+  let sigDataUrl=String((state.orders.find(x=>x.id===o.id)||o).digitalSignatureBorrower||'').trim();
   /** אובייקט הזמנה לטופס הדפסה/PDF/מייל — כולל שינויים שעדיין במסך (לפני שמירה אוטומטית) */
   const liveOrderForForms=()=>{
     const base=state.orders.find(x=>x.id===o.id)||o;
-    return {...base,extraItems:[...extraItems],freeTextItems:[...freeTextItems],returnedItems:[...returnedItems],supplyNotes,returnNotes};
+    return {...base,extraItems:[...extraItems],freeTextItems:[...freeTextItems],returnedItems:[...returnedItems],supplyNotes,returnNotes,digitalSignatureBorrower:sigDataUrl||undefined};
   };
   const lockLoanModal=o.status==='הוחזר'||o.status==='לא נלקחה';
   const autoSave=()=>{
     if(lockLoanModal) return; // סגור לעריכה: הוחזר במלואה / לא נלקחה
-    const orders2=patchOrderById(o.id,x=>({...x,extraItems:[...extraItems],freeTextItems:[...freeTextItems],returnedItems:[...returnedItems],supplyNotes,returnNotes}));
+    const orders2=patchOrderById(o.id,x=>({...x,extraItems:[...extraItems],freeTextItems:[...freeTextItems],returnedItems:[...returnedItems],supplyNotes,returnNotes,digitalSignatureBorrower:sigDataUrl||undefined}));
     if(orders2){state.orders=orders2;save(SK.orders,orders2);}
   };
   const autoSaveReturnsUi=()=>{
@@ -5855,7 +5921,7 @@ function openLoanDetail(o){
       return;
     }
     const orders2=patchOrderById(o.id,x=>{
-      const upd={...x,extraItems:[...extraItems],freeTextItems:[...freeTextItems],returnedItems:[...returnedItems],supplyNotes,returnNotes,status:'סופק'};
+      const upd={...x,extraItems:[...extraItems],freeTextItems:[...freeTextItems],returnedItems:[...returnedItems],supplyNotes,returnNotes,status:'סופק',digitalSignatureBorrower:sigDataUrl||undefined};
       upd.actualSupplyDate=actualDate;
       upd.actualSupplyTime=actualTime;
       if(proposedStartDate!==x.startDate) upd.startDate=proposedStartDate;
@@ -5874,6 +5940,70 @@ function openLoanDetail(o){
     state.modalOnEscape=null;
     setState({orders:orders2,modal:null});
     if(andPrint) printSupplyForm(fresh);
+  };
+  const openSignaturePad=()=>{
+    if(lockLoanModal) return;
+    const sigOverlay=h('div',{class:'modal-overlay'});
+    const sigModal=h('div',{class:'modal',style:{maxWidth:'680px'}});
+    const sigCanvas=h('canvas',{style:{width:'100%',height:'220px',background:'#fff',border:'1px solid #cbd5e1',borderRadius:'8px',touchAction:'none',display:'block'}});
+    const sigBoard=h('div',{style:{position:'relative'}},sigCanvas);
+    const setCanvasSize=()=>{
+      const rect=sigCanvas.getBoundingClientRect();
+      const ratio=Math.max(1,window.devicePixelRatio||1);
+      const newW=Math.max(260,Math.floor(rect.width*ratio));
+      const newH=Math.max(120,Math.floor(220*ratio));
+      if(sigCanvas.width===newW&&sigCanvas.height===newH) return;
+      const prev=sigDataUrl;
+      sigCanvas.width=newW;sigCanvas.height=newH;
+      const ctx=sigCanvas.getContext('2d');
+      ctx.fillStyle='#fff';ctx.fillRect(0,0,sigCanvas.width,sigCanvas.height);
+      if(prev){
+        const img=new Image();
+        img.onload=()=>ctx.drawImage(img,0,0,sigCanvas.width,sigCanvas.height);
+        img.src=prev;
+      }
+    };
+    const getXY=(ev)=>{
+      const r=sigCanvas.getBoundingClientRect();
+      const ratioX=sigCanvas.width/r.width;
+      const ratioY=sigCanvas.height/r.height;
+      const p=ev.touches&&ev.touches[0]?ev.touches[0]:ev;
+      return {x:(p.clientX-r.left)*ratioX,y:(p.clientY-r.top)*ratioY};
+    };
+    let drawing=false;
+    const ctx=sigCanvas.getContext('2d');
+    ctx.lineWidth=2.2;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#111827';
+    const start=(ev)=>{drawing=true;const p=getXY(ev);ctx.beginPath();ctx.moveTo(p.x,p.y);ev.preventDefault();};
+    const move=(ev)=>{if(!drawing) return;const p=getXY(ev);ctx.lineTo(p.x,p.y);ctx.stroke();ev.preventDefault();};
+    const end=()=>{if(!drawing) return;drawing=false;sigDataUrl=sigCanvas.toDataURL('image/png');autoSave();};
+    sigCanvas.addEventListener('pointerdown',start);
+    sigCanvas.addEventListener('pointermove',move);
+    sigCanvas.addEventListener('pointerup',end);
+    sigCanvas.addEventListener('pointerleave',end);
+    sigCanvas.addEventListener('touchstart',start,{passive:false});
+    sigCanvas.addEventListener('touchmove',move,{passive:false});
+    sigCanvas.addEventListener('touchend',end);
+    const clearSig=()=>{ctx.clearRect(0,0,sigCanvas.width,sigCanvas.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,sigCanvas.width,sigCanvas.height);sigDataUrl='';autoSave();};
+    const approveFromPad=()=>{
+      sigDataUrl=sigCanvas.toDataURL('image/png');
+      if(!sigDataUrl||!String(sigDataUrl).startsWith('data:image/')){alert('לא נקלטה חתימה. נסה/י לחתום שוב.');return;}
+      autoSave();
+      doSupply(false);
+      if(document.body.contains(sigOverlay)) document.body.removeChild(sigOverlay);
+    };
+    sigBoard.appendChild(h('button',{class:'btn btn-sm btn-success',style:{position:'absolute',left:'8px',bottom:'8px',zIndex:2,boxShadow:'0 2px 8px rgba(0,0,0,0.35)'},onclick:approveFromPad},'✅ אשר אספקה'));
+    sigModal.appendChild(h('h3',{},'✍️ חתימה דיגיטלית על לוח'));
+    sigModal.appendChild(h('div',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'8px'}},'חתום/י עם אצבע או עט. לחיצה על "אשר אספקה" תשמור את החתימה ותסגור את החלון.'));
+    sigModal.appendChild(sigBoard);
+    sigModal.appendChild(h('div',{class:'modal-footer'},
+      h('button',{class:'btn btn-secondary',onclick:clearSig},'🧽 נקה'),
+      h('button',{class:'btn btn-secondary',onclick:()=>{sigDataUrl=sigCanvas.toDataURL('image/png');autoSave();}},'💾 שמור חתימה'),
+      h('button',{class:'btn btn-secondary',onclick:()=>{if(document.body.contains(sigOverlay)) document.body.removeChild(sigOverlay);}},'סגור')
+    ));
+    sigOverlay.appendChild(sigModal);
+    sigOverlay.addEventListener('click',e=>{if(e.target===sigOverlay&&document.body.contains(sigOverlay)) document.body.removeChild(sigOverlay);});
+    document.body.appendChild(sigOverlay);
+    setTimeout(setCanvasSize,0);
   };
   const closePrepModal=()=>{
     autoSave();
@@ -6235,6 +6365,15 @@ function openLoanDetail(o){
           ta.addEventListener('input',e=>{returnNotes=e.target.value;autoSave();});
           return ta;
         })()
+      ),
+      h('div',{style:{marginTop:'10px',padding:'8px',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg3)'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',flexWrap:'wrap'}},
+          h('span',{style:{fontSize:'12px',fontWeight:'700'}},sigDataUrl?'✍️ קיימת חתימה דיגיטלית להזמנה':'✍️ אין חתימה דיגיטלית עדיין'),
+          lockLoanModal
+            ? h('span',{style:{fontSize:'11px',color:'var(--text3)'}},'הזמנה נעולה')
+            : h('button',{class:'btn btn-sm btn-secondary',onclick:openSignaturePad},'פתח לוח החתמה')
+        ),
+        sigDataUrl?h('img',{src:sigDataUrl,alt:'חתימה דיגיטלית',style:{marginTop:'8px',maxWidth:'100%',maxHeight:'80px',border:'1px solid var(--border)',borderRadius:'6px',background:'#fff'}}):h('span',{})
       ),
       h('div',{class:'modal-footer',style:{flexWrap:'wrap',justifyContent:'flex-start',gap:'10px'}},
         h('button',{class:'btn btn-secondary',onclick:closePrepModal},'סגור'),
