@@ -5170,7 +5170,7 @@ function renderOrderDetailModal(order){
       h('div',{class:'alert alert-danger',style:{fontSize:'12px',lineHeight:1.55,marginBottom:'14px'}},
         h('div',{style:{fontWeight:'700',marginBottom:'6px'}},'🗑 הזמנה בארכיון'),
         h('div',{style:{color:'var(--text2)'}},'אין צפייה בהזמנה זו ברשימה הפעילה. עדיין אפשר לעיין בפרטים ולהזמין מחדש פריט זהה אם הפריט במלאי זמין להשאלה.'),
-        order.deletedAt?h('div',{style:{marginTop:'10px',fontSize:'12px',color:'var(--text3)'}},`הוסרה מהמערכת: ${new Date(order.deletedAt).toLocaleString('he-IL')}${order.deletedBy?` · ${order.deletedBy}`:''}`):h('span',{}))
+        order.deletedAt?h('div',{style:{marginTop:'10px',fontSize:'12px',color:'var(--text3)'}},`הוסרה מהמערכת: ${new Date(order.deletedAt).toLocaleString('he-IL')}${order.deletedBy?` · ${order.deletedBy}`:''}`):h('span',{})
       )
     ]:[]),
     ...(!isAdminSelfOrder&&isAdmin&&Array.isArray(order._pendingStudentUpdateLines)&&order._pendingStudentUpdateLines.length?[
