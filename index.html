@@ -1413,8 +1413,10 @@ function emailOrderPdf(o){
   },21000);
 }
 // ─────────────────────────────────────────────────────────
+/** השוואת מזהי משתמש/הזמנה — מתעלם ממספר מול מחרוזת (למשל ת.ז לעומת id). */
+function eqEntityId(a,b){return String(a==null?'':a)===String(b==null?'':b);}
 function addNotification(userId, title, body, orderId){
-  const notif={id:genId(),userId,title,body,orderId,createdAt:new Date().toISOString(),read:false};
+  const notif={id:genId(),userId:String(userId==null?'':userId),title,body,orderId:orderId==null?'':String(orderId),createdAt:new Date().toISOString(),read:false};
   const notifs=[...(state.notifications||[]),notif];
   state.notifications=notifs;
   save(SK.notifications,notifs);
@@ -1425,9 +1427,9 @@ function formatOrderFullDetailsForAdminNotice(order){
   const inv=state.inventory||[];
   const users=state.users||[];
   const jr=state.journals||[];
-  const it=inv.find(i=>i.id===order.itemId);
-  const u=users.find(x=>x.id===order.userId);
-  const jName=jr.find(j=>j.id===it?.journalId)?.name||'—';
+  const it=inv.find(i=>eqEntityId(i.id,order.itemId));
+  const u=users.find(x=>eqEntityId(x.id,order.userId));
+  const jName=jr.find(j=>eqEntityId(j.id,it?.journalId))?.name||'—';
   const lines=[
     `מספר הזמנה: ${order.orderNum!=null?order.orderNum:'—'}`,
     `מזמין: ${u?.name||getUserName(order.userId)} (ת.ז ${u?.tz||'—'})`,
@@ -1459,7 +1461,13 @@ function notifyAdminsOrderDeleted(order,deletedByLabel,mode){
     :`מחיקת הזמנה על ידי מנהל${deletedByLabel?` (${deletedByLabel})`:''}.`;
   const body=`${intro}\n\n${formatOrderFullDetailsForAdminNotice(order)}`;
   const title=mode==='by_owner'?'🗑 המזמין מחק הזמנה':'🗑 מנהל מחק הזמנה';
-  (state.users||[]).filter(u=>u.role==='admin').forEach(a=>{addNotification(a.id,title,body,order.id);});
+  (state.users||[]).filter(u=>u.role==='admin').forEach(a=>{
+    if(a.id==null||a.id==='')return;
+    addNotification(a.id,title,body,order.id);
+  });
+  if(typeof cloudPushNow==='function'&&typeof cloudSyncEnabled==='function'&&cloudSyncEnabled()){
+    queueMicrotask(()=>{cloudPushNow().catch(()=>{});});
+  }
 }
 
 /**
@@ -2244,7 +2252,7 @@ function renderApp(){
   const {user,page,orders,inventory,users} = state;
   const isAdmin = user.role==='admin';
   const pending = orders.filter(o=>o.status==='מחכה לאישור').length;
-  const myNotifs=(state.notifications||[]).filter(n=>n.userId===user.id&&!n.read);
+  const myNotifs=(state.notifications||[]).filter(n=>eqEntityId(n.userId,user.id)&&!n.read);
   // Build nav with groups and sub-items
   const buildNav=()=>{
     const items=[];
@@ -2868,19 +2876,30 @@ function renderJournals(){
   );
 }
 
-function openOrderModal(itemId,journalId,date,startTime,endTime,preUserId,prePurpose,preNotes){
-  state.modal = ()=>renderOrderModal(itemId,journalId,date,startTime,endTime,preUserId,prePurpose,preNotes);
+function openOrderModal(itemId,journalId,date,startTime,endTime,preUserId,prePurpose,preNotes,preAgreed,preEndDate){
+  state.modal = ()=>renderOrderModal(itemId,journalId,date,startTime,endTime,preUserId,prePurpose,preNotes,preAgreed,preEndDate);
   render();
+}
+/** אחרי צפייה ב«שעות מחסן» מתוך טופס הזמנה — משחזר את החלון עם אותם שדות. */
+function resumeOrderModalFromSnap(){
+  const snap=state._resumeOrderModalSnap;
+  if(!snap)return;
+  setState({page:snap.fromPage||'dashboard',_resumeOrderModalSnap:null});
+  openOrderModal(snap.itemId,snap.journalId,snap.date,snap.startTime,snap.endTime,snap.preUserId,snap.purpose,snap.notes,snap.agreed,snap.endDate);
 }
 function openRecurringOrderModal(preItemId,journalId,preDate){
   state.modal=()=>renderRecurringModal(preItemId,journalId,preDate);
   render();
 }
+function inventoryItemByOrderItemId(itemId){
+  if(itemId==null||itemId==='')return null;
+  return (state.inventory||[]).find(i=>eqEntityId(i.id,itemId))||null;
+}
 /** אפשר להזמין מחדש רק לפריט ראשי מהמלאי (לא פריט חופשי מההזמה המהירה). */
 function canReorderFromOrder(o){
-  if(!o||!o.itemId) return false;
+  if(!o||o.itemId==null||o.itemId==='') return false;
   if(o.isFreeItem||String(o.itemId).startsWith('quick_free')) return false;
-  const it=state.inventory.find(i=>i.id===o.itemId);
+  const it=inventoryItemByOrderItemId(o.itemId);
   if(!it) return false;
   const u=state.user;
   if(!u) return false;
@@ -2893,7 +2912,8 @@ function openReorderModalFromOrder(order){
     alert('לא ניתן להזמין מחדש — אין הרשאה, או שפריט ראשי זה לא ניתן להזמנה מהמלאי (הזמנה מהירה/ידנית).');
     return;
   }
-  const mainItem=state.inventory.find(i=>i.id===order.itemId);
+  const mainItem=inventoryItemByOrderItemId(order.itemId);
+  if(!mainItem){alert('לא נמצא פריט במלאי עבור ההזמנה — לא ניתן להזמין מחדש.');return;}
   if(!mainItem.loanable||mainItem.status!=='תקין'){
     alert('הפריט אינו מסומן כמיועד להשאלה או שאינו במצב «תקין». עדכנו במלאי או בחרו פריט אחר.');
     return;
@@ -3611,7 +3631,7 @@ function updateOrderStatus(order,status){
 // ============================================================
 // ORDER MODAL
 // ============================================================
-function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTime, preUserId, prePurpose, preNotes){
+function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTime, preUserId, prePurpose, preNotes, preAgreed, preEndDate){
   const {user,inventory,users} = state;
   const isAdmin=user.role==='admin';
   const visibleJournalIds=new Set(state.journals.filter(j=>!(state.hiddenJournals||[]).includes(j.id)).map(j=>j.id));
@@ -3625,7 +3645,9 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     return `${String(Math.floor(totalMins/60)).padStart(2,'0')}:${String(totalMins%60).padStart(2,'0')}`;
   })();
 
-  let form={userId:preUserId||user.id,itemId:preItemId||loanableItems[0]?.id||'',startDate:preDate||today(),endDate:preDate||today(),startTime:defaultStart,endTime:defaultEnd,purpose:prePurpose!=null?String(prePurpose):'',notes:preNotes!=null?String(preNotes):'',agreed:isAdmin};
+  const startD=preDate||today();
+  const endD=(preEndDate!=null&&String(preEndDate)!=='')?String(preEndDate):startD;
+  let form={userId:preUserId||user.id,itemId:preItemId||loanableItems[0]?.id||'',startDate:startD,endDate:endD,startTime:defaultStart,endTime:defaultEnd,purpose:prePurpose!=null?String(prePurpose):'',notes:preNotes!=null?String(preNotes):'',agreed:isAdmin?true:!!preAgreed};
   
   let autoRefreshTimer=null;
   const closeModal=()=>{if(autoRefreshTimer) clearInterval(autoRefreshTimer);setState({modal:null});};
@@ -3832,7 +3854,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
   updateDateWarn();
 
   // תאריך החזרה נשאר זהה לתאריך השאילה עד שמשנים אותו ידנית (אז לא מסנכרנים יותר)
-  let endDateLinked=(form.endDate===form.startDate);
+  let endDateLinked=(String(form.endDate)===String(form.startDate));
   let endDateInputEl=null;
   const onStartDateChange=v=>{
     form.startDate=v;
@@ -3970,7 +3992,28 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     ),
     dateWarnEl,
     ...(!isAdmin?[h('div',{style:{marginBottom:'6px'}},
-      h('button',{class:'btn btn-sm btn-secondary',type:'button',style:{fontSize:'11px'},onclick:()=>{closeModal();setState({page:'warehouse_hours'});}},'🕐 שעות פעילות המחסן ותקופות סגירה')
+      h('button',{class:'btn btn-sm btn-secondary',type:'button',style:{fontSize:'11px'},onclick:()=>{
+        if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+        const it=inventoryItemByOrderItemId(form.itemId);
+        const jId=it?.journalId||journalId||'';
+        setState({
+          modal:null,
+          page:'warehouse_hours',
+          _resumeOrderModalSnap:{
+            itemId:form.itemId,
+            journalId:jId,
+            date:form.startDate,
+            endDate:form.endDate,
+            startTime:form.startTime,
+            endTime:form.endTime,
+            preUserId:isAdmin?form.userId:undefined,
+            purpose:form.purpose,
+            notes:form.notes,
+            agreed:!!form.agreed,
+            fromPage:state.page
+          }
+        });
+      }},'🕐 שעות פעילות המחסן ותקופות סגירה')
     )]:[]),
     h('div',{class:'form-row'},
       h('div',{class:'form-group'},h('label',{},'שעת שאילה'),makeInput('time',form.startTime,v=>{form.startTime=v;rebuildPickedBody();}),borrowDayLine),
@@ -4006,7 +4049,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
       h('div',{class:'alert alert-info',style:{fontSize:'12px',marginTop:'8px'}},'✓ הזמנת מנהל – תאושר אוטומטית')
     ]:[]),
     ...(!isAdmin?[h('div',{class:'form-group flex items-center gap-2',style:{cursor:'pointer'}},
-      (()=>{const c=h('input',{type:'checkbox',style:{width:'auto',cursor:'pointer'}});c.addEventListener('change',e=>form.agreed=e.target.checked);return c})(),
+      (()=>{const c=h('input',{type:'checkbox',style:{width:'auto',cursor:'pointer'},checked:!!form.agreed});c.addEventListener('change',e=>form.agreed=e.target.checked);return c})(),
       h('span',{style:{fontSize:'13px'}},'קראתי ואני מסכים/ה לנהלי השאלת ציוד')
     )]:[]),
     h('div',{class:'modal-footer'},
@@ -8780,7 +8823,7 @@ function renderMyProfile(){
 // ============================================================
 function renderMyReports(){
   const {user,orders,inventory,journals} = state;
-  const myOrders=orders.filter(o=>o.userId===user.id);
+  const myOrders=orders.filter(o=>eqEntityId(o.userId,user.id));
 
   let filterItem='', filterStatus='all', filterJournal='all';
   const ordTimeScope=state.ordTimeScope||'window';
@@ -8789,8 +8832,8 @@ function renderMyReports(){
 
   const getFiltered=()=>[...myOrders].sort((a,b)=>b.startDate.localeCompare(a.startDate)).filter(o=>{
     if(filterStatus!=='all'&&o.status!==filterStatus) return false;
-    if(filterJournal!=='all'){const it=inventory.find(i=>i.id===o.itemId);if(it?.journalId!==filterJournal)return false;}
-    if(filterItem){const it=inventory.find(i=>i.id===o.itemId);if(!( it?.name||'').includes(filterItem))return false;}
+    if(filterJournal!=='all'){const it=inventoryItemByOrderItemId(o.itemId);if(!eqEntityId(it?.journalId,filterJournal))return false;}
+    if(filterItem){const it=inventoryItemByOrderItemId(o.itemId);if(!( it?.name||'').includes(filterItem))return false;}
     if(!orderMatchesListTimeScope(o,ordTimeScope,ordRangeFrom,ordRangeTo)) return false;
     return true;
   });
@@ -8811,8 +8854,8 @@ function renderMyReports(){
     )));
     const tbody=h('tbody',{});
     f.forEach(o=>{
-      const it=inventory.find(i=>i.id===o.itemId);
-      const jName=journals.find(j=>j.id===it?.journalId)?.name||'—';
+      const it=inventoryItemByOrderItemId(o.itemId);
+      const jName=journals.find(j=>eqEntityId(j.id,it?.journalId))?.name||'—';
       const openDetail=()=>{state.modal=()=>renderOrderDetailModal(o);render();};
       const cell=(st,child)=>h('td',{style:{cursor:'pointer',...st},onclick:openDetail},child);
       tbody.appendChild(h('tr',{},
@@ -8826,11 +8869,11 @@ function renderMyReports(){
         cell({fontSize:'12px',maxWidth:'120px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},o.purpose||'—'),
         h('td',{style:{cursor:'pointer'},onclick:openDetail},orderBadge(o.status)),
         h('td',{style:{fontSize:'12px',color:'var(--success)',cursor:'pointer'},onclick:openDetail},o.actualReturnDate?`${fmt(o.actualReturnDate)} ${o.actualReturnTime||''}`:'—'),
-        h('td',{style:{verticalAlign:'middle'}},
-          h('div',{class:'flex gap-2',style:{flexWrap:'wrap'}},
-            h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:e=>{e.stopPropagation();openDetail();}},'פרטים'),
+        h('td',{style:{verticalAlign:'middle',minWidth:'148px'}},
+          h('div',{class:'flex gap-2',style:{flexWrap:'wrap',alignItems:'center'}},
+            h('button',{type:'button',class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:(e)=>{e.preventDefault();e.stopPropagation();openDetail();}},'פרטים'),
             ...(canReorderFromOrder(o)?[
-              h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:e=>{e.stopPropagation();openReorderModalFromOrder(o);},title:'פתיחת טופס הזמנה חדש לאותו פריט ראשי'},'הזמן מחדש')
+              h('button',{type:'button',class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:(e)=>{e.preventDefault();e.stopPropagation();openReorderModalFromOrder(o);},title:'פתיחת טופס הזמנה חדש לאותו פריט ראשי'},'הזמן מחדש')
             ]:[])
           )
         )
@@ -9908,23 +9951,23 @@ function renderDeletedOrders(){
 
 function renderNotifications(){
   const {user,notifications=[]} = state;
-  const mine=notifications.filter(n=>n.userId===user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const mine=notifications.filter(n=>eqEntityId(n.userId,user.id)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const readCount=mine.filter(n=>n.read).length;
   // Mark as read after a short delay so badge updates
   setTimeout(()=>{
-    if(notifications.some(n=>n.userId===user.id&&!n.read)){
-      const updated=notifications.map(n=>n.userId===user.id?{...n,read:true}:n);
+    if(notifications.some(n=>eqEntityId(n.userId,user.id)&&!n.read)){
+      const updated=notifications.map(n=>eqEntityId(n.userId,user.id)?{...n,read:true}:n);
       save(SK.notifications,updated);
       state.notifications=updated;
     }
   },500);
 
   const deleteRead=()=>{
-    const updated=notifications.filter(n=>!(n.userId===user.id&&n.read));
+    const updated=notifications.filter(n=>!(eqEntityId(n.userId,user.id)&&n.read));
     state.notifications=updated;save(SK.notifications,updated);setState({});
   };
   const deleteAll=()=>{
-    const updated=notifications.filter(n=>n.userId!==user.id);
+    const updated=notifications.filter(n=>!eqEntityId(n.userId,user.id));
     state.notifications=updated;save(SK.notifications,updated);setState({});
   };
 
@@ -9972,7 +10015,7 @@ function renderNotifications(){
         ?h('div',{class:'empty'},h('div',{class:'icon'},'🔔'),h('p',{},'אין הודעות'))
         :h('div',{},
           ...mine.map(n=>{
-            const o=state.orders.find(x=>x.id===n.orderId);
+            const o=state.orders.find(x=>eqEntityId(x.id,n.orderId));
             return h('div',{
               style:{padding:'14px',borderBottom:'1px solid var(--border)',background:n.read?'transparent':'rgba(99,102,241,0.08)',borderRadius:'6px',marginBottom:'4px'},
             },
@@ -10039,7 +10082,14 @@ function renderWarehouseHours(){
     :h('div',{style:{fontSize:'12px',marginTop:'12px',padding:'10px 12px',background:'var(--bg3)',borderRadius:'8px',color:'var(--text2)',lineHeight:1.5}},
       'אכיפת שעות שבועית כבויה. המנהל יכול להפעיל אותה ב«הגדרות → מחסן» (צ׳קבוקס). תקופות סגירה חלות תמיד על סטודנטים כשהן פעילות.');
 
+  const resumeSnap=state._resumeOrderModalSnap;
   return h('div',{},
+    ...(resumeSnap&&!isAdmin?[h('div',{class:'card mb-4',style:{padding:'14px 16px',background:'rgba(59,130,246,0.12)',border:'1px solid rgba(59,130,246,0.35)'}},
+      h('div',{style:{fontWeight:'700',fontSize:'14px',marginBottom:'6px'}},'↩ חזרה לטופס ההזמנה'),
+      h('div',{style:{fontSize:'12px',color:'var(--text2)',lineHeight:1.55,marginBottom:'12px'}},
+        'פתחתם את שעות המחסן מתוך טופס הזמנה חדשה. הפרטים שמילאתם (תאריכים, שעות, פריט, הערות) ישוחזרו בלחיצה על הכפתור.'),
+      h('button',{class:'btn btn-primary',type:'button',style:{fontSize:'13px'},onclick:()=>resumeOrderModalFromSnap()},'המשך במילוי ההזמנה')
+    )]:[]),
     h('div',{class:'page-header'},
       h('h1',{},'שעות מחסן'),
       h('p',{style:{fontSize:'13px',color:'var(--text3)',lineHeight:1.55}},
