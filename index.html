@@ -5053,7 +5053,7 @@ function sendOrderEmail(recipUserId, subject, message, orderId){
 function renderOrderDetailModal(order){
   const {inventory,users,user} = state;
   const isAdmin=user.role==='admin';
-  if(!isAdmin&&order.userId!==user.id){
+  if(!isAdmin&&!eqEntityId(order.userId,user.id)){
     const closeDenied=()=>setState({modal:null});
     return h('div',{class:'modal-overlay'},
       h('div',{class:'modal'},
@@ -5064,7 +5064,10 @@ function renderOrderDetailModal(order){
   }
   const item=inventory.find(i=>i.id===order.itemId);
   const u=users.find(u=>u.id===order.userId)||{name:getUserName(order.userId),id:order.userId};
-  const orderForDisplay=state.orders.find(x=>x.id===order.id)||order;
+  const orderForDisplay=state.orders.find(x=>eqEntityId(x.id,order.id))||order;
+  const inLive=state.orders.some(o=>eqEntityId(o.id,order.id));
+  const inDeletedArchive=(state.deletedOrders||[]).some(o=>eqEntityId(o.id,order.id));
+  const isStudentArchivedView=!isAdmin&&inDeletedArchive&&!inLive;
   let adminNotes=order.adminNotes||'';
   const closeModal=()=>{
     const live=state.orders.find(x=>x.id===order.id)||order;
@@ -5147,6 +5150,7 @@ function renderOrderDetailModal(order){
   const isReturned=order.status==='הוחזר';
   const isNotTaken=order.status==='לא נלקחה';
   const isTerminalReadOnly=isReturned||isNotTaken;
+  const chatAndArchiveReadOnly=isTerminalReadOnly||isStudentArchivedView;
   const isAdminSelfOrder=isAdmin&&String(order.userId)===String(user.id);
   const modal=h('div',{class:'modal'},
     h('h2',{},
@@ -5159,8 +5163,16 @@ function renderOrderDetailModal(order){
     h('div',{style:{fontSize:'13px',marginBottom:'14px',padding:'10px 14px',borderRadius:'10px',border:'1px solid var(--border)',background:'var(--bg3)',display:'flex',alignItems:'center',gap:'10px',flexWrap:'wrap'}},
       h('span',{style:{fontWeight:'800',color:'var(--text2)'}},'סטטוס נוכחי:'),
       orderBadge(order.status),
+      isStudentArchivedView?h('span',{style:{fontSize:'12px',color:'var(--danger)',fontWeight:'600'}},'ההזמנה יצאה מהרשימה הפעילה (נמחקה / בוטלה) — צפייה בלבד.'):
       isNotTaken?h('span',{style:{fontSize:'12px',color:'var(--text3)'}},'הציוד לא נלקח מהמחסן; ההזמנה ננעלה לצפייה בלבד.'):isReturned?h('span',{style:{fontSize:'12px',color:'var(--text3)'}},'ההשאלה הושלמה וההזמנה ננעלה לצפייה בלבד.'):h('span',{style:{fontSize:'12px',color:'var(--text3)'}},'לפי הסטטוס מוצגות למטה הפעולות הזמינות.')
     ),
+    ...(isStudentArchivedView?[
+      h('div',{class:'alert alert-danger',style:{fontSize:'12px',lineHeight:1.55,marginBottom:'14px'}},
+        h('div',{style:{fontWeight:'700',marginBottom:'6px'}},'🗑 הזמנה בארכיון'),
+        h('div',{style:{color:'var(--text2)'}},'אין צפייה בהזמנה זו ברשימה הפעילה. עדיין אפשר לעיין בפרטים ולהזמין מחדש פריט זהה אם הפריט במלאי זמין להשאלה.'),
+        order.deletedAt?h('div',{style:{marginTop:'10px',fontSize:'12px',color:'var(--text3)'}},`הוסרה מהמערכת: ${new Date(order.deletedAt).toLocaleString('he-IL')}${order.deletedBy?` · ${order.deletedBy}`:''}`):h('span',{}))
+      )
+    ]:[]),
     ...(!isAdminSelfOrder&&isAdmin&&Array.isArray(order._pendingStudentUpdateLines)&&order._pendingStudentUpdateLines.length?[
       h('div',{class:'alert alert-warning',style:{fontSize:'13px',lineHeight:1.5,marginBottom:'14px',borderRadius:'10px'}},
         h('div',{style:{fontWeight:'800',marginBottom:'8px'}},'📧 עדכון לסטודנט טרם נשלח'),
@@ -5316,16 +5328,16 @@ function renderOrderDetailModal(order){
               )
             ));
           });
-          chatEl.appendChild(msgsWrap);
+          chatEl.appendChild(msgsWrap);         
           // mark as read
           const unread=msgs.filter(m=>!m.readBy?.includes(user.id));
-          if(unread.length>0){
+          if(unread.length>0&&!isStudentArchivedView){
             const updated=patchOrderById(order.id,o=>({...o,chat:o.chat.map(m=>({...m,readBy:[...(m.readBy||[]),user.id]}))}));
             if(updated){state.orders=updated;save(SK.orders,updated);}
           }
         }
-        if(isTerminalReadOnly){
-          chatEl.appendChild(h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'8px',padding:'8px 10px',background:'var(--bg3)',borderRadius:'8px',border:'1px solid var(--border)'}},'🔒 הזמנה סגורה — לא ניתן לשלוח הודעות בצ\'אט.'));
+        if(chatAndArchiveReadOnly){
+          chatEl.appendChild(h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'8px',padding:'8px 10px',background:'var(--bg3)',borderRadius:'8px',border:'1px solid var(--border)'}},isStudentArchivedView?'🔒 הזמנה בארכיון — צ\'אט לצפייה בלבד.':'🔒 הזמנה סגורה — לא ניתן לשלוח הודעות בצ\'אט.'));
           return;
         }
         // Input row
@@ -5483,13 +5495,13 @@ function renderOrderDetailModal(order){
           save(SK.orders,orders2);
         }},'↩ בטל «לא נלקחה» (מנהל)')
       ]:[]),
-      ...(!isTerminalReadOnly&&((isAdmin&&!order._cancelRequest)||(order.userId===user.id&&!order._cancelRequest&&['מחכה לאישור','אושרה'].includes(order.status)))?[
+      ...(!isTerminalReadOnly&&!isStudentArchivedView&&((isAdmin&&!order._cancelRequest)||(eqEntityId(order.userId,user.id)&&!order._cancelRequest&&['מחכה לאישור','אושרה'].includes(order.status)))?[
         h('button',{class:'btn btn-secondary',onclick:()=>openEditOrderModal(order)},'✏️ עריכה')
       ]:[]),
-      ...(order.userId===user.id&&['אושרה','ההזמנה מוכנה'].includes(order.status)&&!order._cancelRequest&&!studentCanDirectCancel(order)&&!isTerminalReadOnly?[
+      ...(eqEntityId(order.userId,user.id)&&['אושרה','ההזמנה מוכנה'].includes(order.status)&&!order._cancelRequest&&!studentCanDirectCancel(order)&&!isTerminalReadOnly&&!isStudentArchivedView?[
         h('button',{class:'btn btn-warning',style:{fontSize:'12px',color:'#78350f',borderColor:'#f59e0b'},onclick:()=>openCancelRequestModal(order),title:'פחות מ־48 שעות לפני השאילה — נדרש אישור מנהל'},'📨 בקשת ביטול (אישור מנהל)')
       ]:[]),
-      ...(!isAdmin&&order.userId===user.id&&studentCanDirectCancel(order)&&!['סופק','הוחזר חלקית'].includes(order.status)&&!isTerminalReadOnly?[
+      ...(!isAdmin&&eqEntityId(order.userId,user.id)&&studentCanDirectCancel(order)&&!['סופק','הוחזר חלקית'].includes(order.status)&&!isTerminalReadOnly&&!isStudentArchivedView?[
         h('button',{class:'btn btn-danger',onclick:()=>deleteOrder(order)},'🗑 מחק הזמנה')
       ]:[]),
       ...(isAdmin&&!isTerminalReadOnly?(()=>{
@@ -8824,14 +8836,31 @@ function renderMyProfile(){
 function renderMyReports(){
   const {user,orders,inventory,journals} = state;
   const myOrders=orders.filter(o=>eqEntityId(o.userId,user.id));
+  const myDeleted=(state.deletedOrders||[]).filter(o=>eqEntityId(o.userId,user.id));
 
   let filterItem='', filterStatus='all', filterJournal='all';
   const ordTimeScope=state.ordTimeScope||'window';
   const ordRangeFrom=state.ordRangeFrom||'';
   const ordRangeTo=state.ordRangeTo||'';
 
-  const getFiltered=()=>[...myOrders].sort((a,b)=>b.startDate.localeCompare(a.startDate)).filter(o=>{
-    if(filterStatus!=='all'&&o.status!==filterStatus) return false;
+  const getCombinedSorted=()=>{
+    const rows=[];
+    myOrders.forEach(o=>rows.push({o,archived:false}));
+    myDeleted.forEach(o=>rows.push({o,archived:true}));
+    rows.sort((a,b)=>{
+      const ta=a.archived?(a.o.deletedAt||a.o.startDate||''):(a.o.startDate||'');
+      const tb=b.archived?(b.o.deletedAt||b.o.startDate||''):(b.o.startDate||'');
+      return String(tb).localeCompare(String(ta));
+    });
+    return rows;
+  };
+
+  const getFiltered=()=>getCombinedSorted().filter(({o,archived})=>{
+    if(filterStatus!=='all'){
+      if(filterStatus==='נמחקה'){if(!archived) return false;}
+      else if(filterStatus==='נדחתה'){if(o.status!=='נדחתה') return false;}
+      else{if(archived) return false;if(o.status!==filterStatus) return false;}
+    }
     if(filterJournal!=='all'){const it=inventoryItemByOrderItemId(o.itemId);if(!eqEntityId(it?.journalId,filterJournal))return false;}
     if(filterItem){const it=inventoryItemByOrderItemId(o.itemId);if(!( it?.name||'').includes(filterItem))return false;}
     if(!orderMatchesListTimeScope(o,ordTimeScope,ordRangeFrom,ordRangeTo)) return false;
@@ -8853,21 +8882,28 @@ function renderMyReports(){
       h('th',{},'פעולות')
     )));
     const tbody=h('tbody',{});
-    f.forEach(o=>{
+    f.forEach(({o,archived})=>{
       const it=inventoryItemByOrderItemId(o.itemId);
       const jName=journals.find(j=>eqEntityId(j.id,it?.journalId))?.name||'—';
       const openDetail=()=>{state.modal=()=>renderOrderDetailModal(o);render();};
       const cell=(st,child)=>h('td',{style:{cursor:'pointer',...st},onclick:openDetail},child);
-      tbody.appendChild(h('tr',{},
-        cell({fontSize:'11px',color:'var(--text3)'},`#${o.orderNum||'—'}`),
+      const statusCell=archived
+        ?h('td',{style:{cursor:'pointer'},onclick:openDetail},
+          h('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-start',gap:'4px'}},
+            orderBadge(o.status),
+            h('span',{style:{fontSize:'10px',fontWeight:'700',color:'var(--danger)',background:'rgba(239,68,68,0.12)',padding:'2px 6px',borderRadius:'6px'}},'נמחקה / הוסרה')
+          ))
+        :h('td',{style:{cursor:'pointer'},onclick:openDetail},orderBadge(o.status));
+      tbody.appendChild(h('tr',{style:archived?{opacity:0.92,boxShadow:'inset 3px 0 0 rgba(239,68,68,0.45)'}:{}},
+        cell({fontSize:'11px',color:'var(--text3)'},`${archived?'🗑 ':''}#${o.orderNum||'—'}`),
         cell({fontWeight:'600',fontSize:'12px'},it?.name||o.itemName||'—'),
-        cell({},h('code',{style:{fontSize:'11px'}},it?.barcode||'—')),
+        cell({},h('code',{style:{fontSize:'11px'}},it?.barcode||o.itemBarcode||'—')),
         cell({fontSize:'11px',color:'var(--text3)'},jName),
         cell({fontSize:'11px',color:'var(--text3)',whiteSpace:'nowrap'},o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'),
         cell({fontSize:'12px'},`${fmt(o.startDate)} ${o.startTime||''}`),
         cell({fontSize:'12px'},`${fmt(o.endDate)} ${o.endTime||''}`),
         cell({fontSize:'12px',maxWidth:'120px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},o.purpose||'—'),
-        h('td',{style:{cursor:'pointer'},onclick:openDetail},orderBadge(o.status)),
+        statusCell,
         h('td',{style:{fontSize:'12px',color:'var(--success)',cursor:'pointer'},onclick:openDetail},o.actualReturnDate?`${fmt(o.actualReturnDate)} ${o.actualReturnTime||''}`:'—'),
         h('td',{style:{verticalAlign:'middle',minWidth:'148px'}},
           h('div',{class:'flex gap-2',style:{flexWrap:'wrap',alignItems:'center'}},
@@ -8884,10 +8920,11 @@ function renderMyReports(){
   };
 
   const printMyReport=(f)=>{
-    const rows=f.map(o=>{
-      const it=inventory.find(i=>i.id===o.itemId);
-      const jName=journals.find(j=>j.id===it?.journalId)?.name||'—';
-      return `<tr><td>${o.orderNum||'—'}</td><td>${it?.name||o.itemName||'—'}</td><td>${it?.barcode||'—'}</td><td>${jName}</td><td>${o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'}</td><td>${fmt(o.startDate)} ${o.startTime||''}</td><td>${fmt(o.endDate)} ${o.endTime||''}</td><td>${o.purpose||'—'}</td><td>${o.status}</td><td>${o.actualReturnDate?fmt(o.actualReturnDate)+' '+(o.actualReturnTime||''):'—'}</td></tr>`;
+    const rows=f.map(({o,archived})=>{
+      const it=inventoryItemByOrderItemId(o.itemId);
+      const jName=journals.find(j=>eqEntityId(j.id,it?.journalId))?.name||'—';
+      const st=`${o.status}${archived?' · בארכיון (נמחקה)':''}`;
+      return `<tr><td>${o.orderNum||'—'}</td><td>${it?.name||o.itemName||'—'}</td><td>${it?.barcode||o.itemBarcode||'—'}</td><td>${jName}</td><td>${o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'}</td><td>${fmt(o.startDate)} ${o.startTime||''}</td><td>${fmt(o.endDate)} ${o.endTime||''}</td><td>${o.purpose||'—'}</td><td>${st}</td><td>${o.actualReturnDate?fmt(o.actualReturnDate)+' '+(o.actualReturnTime||''):'—'}</td></tr>`;
     }).join('');
     const logoSrc=localStorage.getItem('eqs_logo_src')||'';
     const html=`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>הדוחות שלי</title>
@@ -8903,11 +8940,12 @@ function renderMyReports(){
 
   const exportMyCSV=(f)=>{
     const csv=[['#הזמנה','פריט ראשי','ברקוד','יומן','תאריך ביצוע ההזמנה','תאריך שאילה','שעת שאילה','תאריך החזרה','שעת החזרה',ORDER_PURPOSE_LABEL,'סטטוס','הוחזר בפועל','הערות'],
-      ...f.map(o=>{
-        const it=inventory.find(i=>i.id===o.itemId);
-        const jName=journals.find(j=>j.id===it?.journalId)?.name||'';
+      ...f.map(({o,archived})=>{
+        const it=inventoryItemByOrderItemId(o.itemId);
+        const jName=journals.find(j=>eqEntityId(j.id,it?.journalId))?.name||'';
         const placed=o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'';
-        return[o.orderNum||'',it?.name||o.itemName||'',it?.barcode||'',jName,placed,o.startDate,o.startTime||'',o.endDate,o.endTime||'',o.purpose||'',o.status,o.actualReturnDate?(o.actualReturnDate+' '+(o.actualReturnTime||'')):'',( o.notes||'').replace(/,/g,' ')];
+        const st=`${o.status}${archived?' · בארכיון (נמחקה)':''}`;
+        return[o.orderNum||'',it?.name||o.itemName||'',it?.barcode||o.itemBarcode||'',jName,placed,o.startDate,o.startTime||'',o.endDate,o.endTime||'',o.purpose||'',st,o.actualReturnDate?(o.actualReturnDate+' '+(o.actualReturnTime||'')):'',( o.notes||'').replace(/,/g,' ')];
       })
     ].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');
@@ -8919,7 +8957,7 @@ function renderMyReports(){
   // Autocomplete for item name
   const itemInp=h('input',{placeholder:'שם פריט...',style:{width:'100%'}});
   itemInp.addEventListener('input',e=>{filterItem=e.target.value;refresh();});
-  const itemWrap=makeAutocomplete(itemInp,()=>[...new Set(myOrders.map(o=>inventory.find(i=>i.id===o.itemId)?.name).filter(Boolean))],{preferStart:true,maxList:80});
+  const itemWrap=makeAutocomplete(itemInp,()=>[...new Set([...myOrders,...myDeleted].map(o=>inventoryItemByOrderItemId(o.itemId)?.name||o.itemName).filter(Boolean))],{preferStart:true,maxList:80});
 
   const mkSel=(opts,onch)=>{const s=h('select',{style:{width:'100%'}});opts.forEach(([v,l])=>s.appendChild(h('option',{value:v},l)));s.addEventListener('change',e=>{onch(e.target.value);refresh();});return s;};
 
@@ -8946,7 +8984,7 @@ function renderMyReports(){
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:'12px',marginBottom:'14px'}},
         h('div',{},h('label',{},'פריט'),itemWrap),
         h('div',{},h('label',{},'יומן'),mkSel([['all','כולם'],...journals.map(j=>[j.id,j.name])],v=>filterJournal=v)),
-        h('div',{},h('label',{},'סטטוס'),mkSel([['all','הכל'],['מחכה לאישור','ממתין'],['אושרה','אושרה'],['סופק','סופק'],['הוחזר חלקית','הוחזר חלקית'],['הוחזר','הוחזר'],['נדחתה','נדחתה']],v=>filterStatus=v))
+        h('div',{},h('label',{},'סטטוס'),mkSel([['all','הכל'],['מחכה לאישור','ממתין'],['אושרה','אושרה'],['סופק','סופק'],['הוחזר חלקית','הוחזר חלקית'],['הוחזר','הוחזר'],['נדחתה','נדחתה'],['נמחקה','בארכיון (נמחקו)']],v=>filterStatus=v))
       ),
       h('div',{class:'flex items-center justify-between',style:{flexWrap:'wrap',gap:'8px'}},
         countEl,
