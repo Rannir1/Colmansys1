@@ -1419,6 +1419,48 @@ function addNotification(userId, title, body, orderId){
   state.notifications=notifs;
   save(SK.notifications,notifs);
 }
+/** טקסט מפורט להודעת מנהל על הזמנה (מחיקה וכדומה). */
+function formatOrderFullDetailsForAdminNotice(order){
+  if(!order) return '';
+  const inv=state.inventory||[];
+  const users=state.users||[];
+  const jr=state.journals||[];
+  const it=inv.find(i=>i.id===order.itemId);
+  const u=users.find(x=>x.id===order.userId);
+  const jName=jr.find(j=>j.id===it?.journalId)?.name||'—';
+  const lines=[
+    `מספר הזמנה: ${order.orderNum!=null?order.orderNum:'—'}`,
+    `מזמין: ${u?.name||getUserName(order.userId)} (ת.ז ${u?.tz||'—'})`,
+    `פריט: ${it?.name||order.itemName||'—'}`,
+    `ברקוד: ${it?.barcode||order.itemBarcode||'—'}`,
+    `יומן: ${jName}`,
+    `תאריך שאילה: ${fmt(order.startDate)} ${order.startTime||''}`.trim(),
+    `תאריך החזרה: ${fmt(order.endDate)} ${order.endTime||''}`.trim(),
+    `סטטוס לפני המחיקה: ${order.status||'—'}`,
+    `${ORDER_PURPOSE_LABEL}: ${order.purpose||'—'}`,
+  ];
+  if(String(order.notes||'').trim()) lines.push(`הערות מזמין: ${order.notes}`);
+  if(String(order.adminNotes||'').trim()) lines.push(`הערות מנהל: ${order.adminNotes}`);
+  if(order.createdAt) lines.push(`מועד יצירת ההזמנה במערכת: ${new Date(order.createdAt).toLocaleString('he-IL')}`);
+  if(order.actualReturnDate) lines.push(`הוחזר בפועל: ${fmt(order.actualReturnDate)} ${order.actualReturnTime||''}`.trim());
+  const ex=order.extraItems;
+  if(Array.isArray(ex)&&ex.length) lines.push(`פריטי לווי (ברקודים): ${ex.join(', ')}`);
+  const ft=order.freeTextItems;
+  if(Array.isArray(ft)&&ft.length) lines.push(`פריטי טקסט חופשי: ${ft.join(' | ')}`);
+  if(order.isFreeItem||String(order.itemId||'').startsWith('quick_free')) lines.push('סוג: פריט חופשי / הזמנה מהירה');
+  lines.push(`מזהה רשומה: ${order.id||'—'}`);
+  return lines.join('\n');
+}
+/** התראות למנהלים על מחיקת הזמנה: כל מנהל מקבל (כולל המבצע — לתיעוד משותף). mode: by_owner | by_admin */
+function notifyAdminsOrderDeleted(order,deletedByLabel,mode){
+  if(!order) return;
+  const intro=mode==='by_owner'
+    ?`מחיקה עצמית של הזמנה על ידי המזמין${deletedByLabel?` (${deletedByLabel})`:''}.`
+    :`מחיקת הזמנה על ידי מנהל${deletedByLabel?` (${deletedByLabel})`:''}.`;
+  const body=`${intro}\n\n${formatOrderFullDetailsForAdminNotice(order)}`;
+  const title=mode==='by_owner'?'🗑 המזמין מחק הזמנה':'🗑 מנהל מחק הזמנה';
+  (state.users||[]).filter(u=>u.role==='admin').forEach(a=>{addNotification(a.id,title,body,order.id);});
+}
 
 /**
  * להזמנות סופק / הוחזר חלקית — מזהי מלאי שעדיין אצל השואל.
@@ -1975,7 +2017,7 @@ function flushDeferredOrderOutreach(orderId,closeModal){
     const lines=ord._pendingAdminUpdateLines;
     const uName=getUserName(ord.userId);
     const summary=[`הזמנה #${ord.orderNum||''} (${uName}) עודכנה על ידי המזמין:`,...lines.map(l=>'• '+l)].join('\n');
-    (state.users||[]).filter(u=>u.role==='admin').forEach(aid=>{addNotification(aid,'✏️ סטודנט עדכן הזמנה',summary,ord.id);});
+    (state.users||[]).filter(u=>u.role==='admin').forEach(a=>{addNotification(a.id,'✏️ סטודנט עדכן הזמנה',summary,ord.id);});
     if(st.emailNotificationsEnabled&&st.emailjsServiceId&&window.emailjs){
       const adminEmail=st.adminNotifyEmail||st.supportEmail;
       if(adminEmail){
@@ -4547,7 +4589,7 @@ function openCancelRequestModal(order){
 function deleteOrder(order){
   const {user} = state;
   const isAdmin=user.role==='admin';
-  const isOwner=order.userId===user.id;
+  const isOwner=String(order.userId)===String(user.id);
   if(!isAdmin&&!isOwner){alert('אין הרשאה');return;}
   // Block deletion of active loans
   if(order.status==='סופק'){
@@ -4557,6 +4599,7 @@ function deleteOrder(order){
     alert('לא ניתן לבטל הזמנה לבד פחות מ־48 שעות לפני מועד ההשאלה. השתמשו בכפתור «בקשת ביטול — דורש אישור מנהל» בחלון פרטי ההזמנה.');
     return;
   }
+  const deleterName=user.name||'—';
   // Show inline confirm overlay instead of confirm()
   const overlay=h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center'}});
   const box=h('div',{style:{background:'var(--bg2)',borderRadius:'12px',padding:'28px 32px',maxWidth:'360px',width:'90%',textAlign:'center'}},
@@ -4567,7 +4610,9 @@ function deleteOrder(order){
       h('button',{class:'btn btn-secondary',onclick:()=>document.body.removeChild(overlay)},'ביטול'),
       h('button',{class:'btn btn-danger',onclick:()=>{
         document.body.removeChild(overlay);
-        const deleted=[...(state.deletedOrders||[]),{...order,deletedAt:new Date().toISOString(),deletedBy:state.user.name}];
+        if(!isAdmin&&isOwner) notifyAdminsOrderDeleted(order,deleterName,'by_owner');
+        else if(isAdmin) notifyAdminsOrderDeleted(order,deleterName,'by_admin');
+        const deleted=[...(state.deletedOrders||[]),{...order,deletedAt:new Date().toISOString(),deletedBy:deleterName}];
         state.deletedOrders=deleted;save(SK.deletedOrders,deleted);
         const orders=state.orders.filter(o=>o.id!==order.id);
         state.modalOnEscape=null;
@@ -8761,23 +8806,34 @@ function renderMyReports(){
     const tbl=h('table',{});
     tbl.appendChild(h('thead',{},h('tr',{},
       h('th',{},'#'),h('th',{},'פריט ראשי'),h('th',{},'ברקוד'),h('th',{},'יומן'),
-      h('th',{},'תאריך ביצוע ההזמנה'),h('th',{},'תאריך שאילה'),h('th',{},'תאריך החזרה'),h('th',{},ORDER_PURPOSE_LABEL),h('th',{},'סטטוס'),h('th',{},'הוחזר בפועל')
+      h('th',{},'תאריך ביצוע ההזמנה'),h('th',{},'תאריך שאילה'),h('th',{},'תאריך החזרה'),h('th',{},ORDER_PURPOSE_LABEL),h('th',{},'סטטוס'),h('th',{},'הוחזר בפועל'),
+      h('th',{},'פעולות')
     )));
     const tbody=h('tbody',{});
     f.forEach(o=>{
       const it=inventory.find(i=>i.id===o.itemId);
       const jName=journals.find(j=>j.id===it?.journalId)?.name||'—';
-      tbody.appendChild(h('tr',{style:{cursor:'pointer'},onclick:()=>{state.modal=()=>renderOrderDetailModal(o);render();}},
-        h('td',{style:{fontSize:'11px',color:'var(--text3)'}},`#${o.orderNum||'—'}`),
-        h('td',{style:{fontWeight:'600',fontSize:'12px'}},it?.name||o.itemName||'—'),
-        h('td',{},h('code',{style:{fontSize:'11px'}},it?.barcode||'—')),
-        h('td',{style:{fontSize:'11px',color:'var(--text3)'}},jName),
-        h('td',{style:{fontSize:'11px',color:'var(--text3)',whiteSpace:'nowrap'}},o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'),
-        h('td',{style:{fontSize:'12px'}},`${fmt(o.startDate)} ${o.startTime||''}`),
-        h('td',{style:{fontSize:'12px'}},`${fmt(o.endDate)} ${o.endTime||''}`),
-        h('td',{style:{fontSize:'12px',maxWidth:'120px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},o.purpose||'—'),
-        h('td',{},orderBadge(o.status)),
-        h('td',{style:{fontSize:'12px',color:'var(--success)'}},o.actualReturnDate?`${fmt(o.actualReturnDate)} ${o.actualReturnTime||''}`:'—')
+      const openDetail=()=>{state.modal=()=>renderOrderDetailModal(o);render();};
+      const cell=(st,child)=>h('td',{style:{cursor:'pointer',...st},onclick:openDetail},child);
+      tbody.appendChild(h('tr',{},
+        cell({fontSize:'11px',color:'var(--text3)'},`#${o.orderNum||'—'}`),
+        cell({fontWeight:'600',fontSize:'12px'},it?.name||o.itemName||'—'),
+        cell({},h('code',{style:{fontSize:'11px'}},it?.barcode||'—')),
+        cell({fontSize:'11px',color:'var(--text3)'},jName),
+        cell({fontSize:'11px',color:'var(--text3)',whiteSpace:'nowrap'},o.createdAt?new Date(o.createdAt).toLocaleString('he-IL'):'—'),
+        cell({fontSize:'12px'},`${fmt(o.startDate)} ${o.startTime||''}`),
+        cell({fontSize:'12px'},`${fmt(o.endDate)} ${o.endTime||''}`),
+        cell({fontSize:'12px',maxWidth:'120px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},o.purpose||'—'),
+        h('td',{style:{cursor:'pointer'},onclick:openDetail},orderBadge(o.status)),
+        h('td',{style:{fontSize:'12px',color:'var(--success)',cursor:'pointer'},onclick:openDetail},o.actualReturnDate?`${fmt(o.actualReturnDate)} ${o.actualReturnTime||''}`:'—'),
+        h('td',{style:{verticalAlign:'middle'}},
+          h('div',{class:'flex gap-2',style:{flexWrap:'wrap'}},
+            h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:e=>{e.stopPropagation();openDetail();}},'פרטים'),
+            ...(canReorderFromOrder(o)?[
+              h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:e=>{e.stopPropagation();openReorderModalFromOrder(o);},title:'פתיחת טופס הזמנה חדש לאותו פריט ראשי'},'הזמן מחדש')
+            ]:[])
+          )
+        )
       ));
     });
     tbl.appendChild(tbody);
