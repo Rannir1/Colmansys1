@@ -1066,6 +1066,10 @@ function warehouseDayIndexFromYMD(ymd){
   const p=ymd.split('-');
   return new Date(parseInt(p[0],10),parseInt(p[1],10)-1,parseInt(p[2],10)).getDay();
 }
+function hebrewWeekdayLabelFromYMD(ymd){
+  if(!ymd) return '';
+  return `יום ${WH_DAY_LABELS[warehouseDayIndexFromYMD(ymd)]}`;
+}
 function isDateTimeWithinWarehouseWeekly(dayIndex,timeStr,weekly){
   const day=weekly[dayIndex];
   if(!day||!day.enabled) return false;
@@ -3150,6 +3154,12 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
     if(type!=='date') i.addEventListener('input',e=>onchange(e.target.value));
     return i;
   };
+  const bulkBorrowDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
+  const bulkReturnDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
+  const updateBulkDateDowLines=()=>{
+    bulkBorrowDowLine.textContent=hebrewWeekdayLabelFromYMD(form.startDate)||'';
+    bulkReturnDowLine.textContent=hebrewWeekdayLabelFromYMD(form.endDate)||'';
+  };
 
   const jrnSel=h('select',{style:{width:'100%'}});
   journals.forEach(j=>{const o=h('option',{value:j.id},j.name);if(j.id===form.journalId)o.selected=true;jrnSel.appendChild(o);});
@@ -3218,7 +3228,7 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
     if(autoRefreshTimer) clearInterval(autoRefreshTimer);
     autoRefreshTimer=setInterval(()=>{const ae=document.activeElement;if(ae&&ae.tagName==='INPUT'&&((ae.type||'')==='date'||(ae.type||'')==='time')) return;syncOrdersFromStorage();if(bulkPickDates.enabled)rebuildBulkPick();rebuildItems();},7000);
   };
-  const refreshDates=()=>{if(bulkPickDates.enabled)rebuildBulkPick();rebuildItems();};
+  const refreshDates=()=>{updateBulkDateDowLines();if(bulkPickDates.enabled)rebuildBulkPick();rebuildItems();};
 
   // ── Recurring ──
   let bulkRecurring={enabled:false,mode:'times',times:4,untilDate:'',interval:1,skipHolidays:true,skipWeekends:false};
@@ -3293,14 +3303,18 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
   rebuildItems();
   startAutoRefresh();
 
+  const bulkEndDateInp=makeInput('date',form.endDate,v=>{form.endDate=v;refreshDates();});
+  const bulkStartDateInp=makeInput('date',form.startDate,v=>{form.startDate=v;if(v>form.endDate){form.endDate=v;bulkEndDateInp.value=v;}refreshDates();});
+  updateBulkDateDowLines();
+
   const modal=h('div',{class:'modal modal-lg'},
     h('h2',{},'📋 הזמנה קבוצתית'),
     h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'12px',lineHeight:1.45}},'אפשר לשלב: כמה פריטים יחד עם טווח תאריך אחד (ברירת מחדל), או לסמן למטה «תאריכים בודדים» ואז כל פריט נבחר יקבל הזמנה נפרדת לכל תאריך ברשימה. לא ניתן לשלב תאריכים בודדים עם מחזוריות שבועית באותה פעולה.'),
     h('div',{class:'responsive-grid-2',style:{gap:'12px',marginBottom:'16px'}},
       h('div',{class:'form-group'},h('label',{},'מזמין'),userSel),
       h('div',{class:'form-group'},h('label',{},'יומן'),jrnSel),
-      h('div',{class:'form-group'},h('label',{},'תאריך שאילה'),(()=>{const i=makeInput('date',form.startDate,v=>{form.startDate=v;if(v>form.endDate)form.endDate=v;refreshDates();});return i;})()),
-      h('div',{class:'form-group'},h('label',{},'תאריך החזרה'),(()=>{const i=makeInput('date',form.endDate,v=>{form.endDate=v;refreshDates();});return i;})()),
+      h('div',{class:'form-group'},h('label',{},'תאריך שאילה'),bulkStartDateInp,bulkBorrowDowLine),
+      h('div',{class:'form-group'},h('label',{},'תאריך החזרה'),bulkEndDateInp,bulkReturnDowLine),
       h('div',{class:'form-group'},h('label',{},'שעת שאילה'),(()=>{const i=makeInput('time',form.startTime,v=>{form.startTime=v;refreshDates();});return i;})()),
       h('div',{class:'form-group'},h('label',{},'שעת החזרה'),(()=>{const i=makeInput('time',form.endTime,v=>{form.endTime=v;refreshDates();});return i;})()),
       h('div',{class:'form-group'},h('label',{},ORDER_PURPOSE_LABEL),makeInput('text',form.purpose,v=>form.purpose=v,{placeholder:ORDER_PURPOSE_PLACEHOLDER})),
@@ -3353,6 +3367,7 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
         const groupId='bulk_'+genId();
         const allNewOrders=[];
         let skippedCount=0;
+        const skippedDetailLines=[];
 
         if(!bulkRecurring.enabled&&bulkPickDates.enabled){
           const dList=[...bulkPickDates.dates].sort();
@@ -3362,14 +3377,25 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
           dList.forEach(d=>{
             [...selectedItems].forEach(itemId=>{
               const t=getBulkTimes(d);
-              if(getConflicts(itemId,d,d,t.startTime,t.endTime,null).length>0){skippedCount++;return;}
+              if(getConflicts(itemId,d,d,t.startTime,t.endTime,null).length>0){
+                skippedCount++;
+                const it=inventory.find(i=>i.id===itemId);
+                skippedDetailLines.push(`${fmt(d)} — ${it?.name||'—'}`);
+                return;
+              }
               const item=inventory.find(i=>i.id===itemId);
               const mdNote=dList.length>=2?' | תאריכים נבחרים (קבוצתי)':'';
               allNewOrders.push({id:genId(),orderNum:baseNum+idx++,userId:form.userId,itemId,itemName:item?.name||'—',itemBarcode:item?.barcode||'',startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,purpose:form.purpose,notes:(form.notes||'')+mdNote,status:'אושרה',createdAt:new Date().toISOString(),journalId:form.journalId,bulkGroupId:groupId,multiDateGroupId:dList.length>=2?groupId:undefined});
             });
           });
           if(!allNewOrders.length){msgEl.innerHTML='<div class="alert alert-danger">כל הצירופים תפוסים או לא תקפים</div>';return;}
-          if(skippedCount>0&&!confirm(`${skippedCount} צירופי פריט×תאריך תפוסים ויידלגו. ליצור ${allNewOrders.length} הזמנות?`))return;
+          if(skippedCount>0){
+            const maxShow=18;
+            const head=skippedDetailLines.slice(0,maxShow);
+            const more=skippedDetailLines.length-maxShow;
+            const listTxt=head.join('\n')+(more>0?`\n… ועוד ${more}`:'');
+            if(!confirm(`${skippedCount} צירופי פריט×תאריך תפוסים ויידלגו:\n\n${listTxt}\n\nליצור ${allNewOrders.length} הזמנות?`))return;
+          }
         }else if(!bulkRecurring.enabled){
           // Single week
           const baseNum=nextOrderNum();
@@ -3401,7 +3427,12 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
           const pushWeekForAllItems=(sd,ed)=>{
             [...selectedItems].forEach(itemId=>{
               const busy=getConflicts(itemId,sd,ed,form.startTime,form.endTime,null).length>0;
-              if(busy){skippedCount++;return;}
+              if(busy){
+                skippedCount++;
+                const it=inventory.find(i=>i.id===itemId);
+                skippedDetailLines.push(`${fmt(sd)} — ${it?.name||'—'}`);
+                return;
+              }
               const item=inventory.find(i=>i.id===itemId);
               allNewOrders.push({id:genId(),orderNum:baseNum+orderIdx++,userId:form.userId,itemId,itemName:item?.name||'—',itemBarcode:item?.barcode||'',startDate:sd,endDate:ed,startTime:form.startTime,endTime:form.endTime,purpose:form.purpose,notes:form.notes,status:'אושרה',createdAt:new Date().toISOString(),journalId:form.journalId,bulkGroupId:groupId,recurringGroupId:groupId});
             });
@@ -3457,7 +3488,13 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
           }
           if(!allNewOrders.length){msgEl.innerHTML='<div class="alert alert-danger">כל המועדים תפוסים או חגים!</div>';return;}
           if(bulkRecurring.mode==='times'&&recurSlotsGot<recurSlotsWanted&&!confirm(`נאספו רק ${recurSlotsGot} מחזורים מתוך ${recurSlotsWanted} המבוקשות (חגים לא נוצרים). להמשיך וליצור ${allNewOrders.length} הזמנות?`))return;
-          if(skippedCount>0&&!confirm(`${skippedCount} צירופי פריט×מועד תפוסים ויידלגו. להמשיך וליצור ${allNewOrders.length} הזמנות?`))return;
+          if(skippedCount>0){
+            const maxShow=18;
+            const head=skippedDetailLines.slice(0,maxShow);
+            const more=skippedDetailLines.length-maxShow;
+            const listTxt=head.join('\n')+(more>0?`\n… ועוד ${more}`:'');
+            if(!confirm(`${skippedCount} צירופי פריט×מועד תפוסים ויידלגו:\n\n${listTxt}\n\nלהמשיך וליצור ${allNewOrders.length} הזמנות?`))return;
+          }
         }
 
         const orders=[...state.orders,...allNewOrders];
@@ -3689,16 +3726,11 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
   itemSelEl.addEventListener('change',e=>{form.itemId=e.target.value;updateConflictMsg();rebuildPickedBody();});
 
   const warehousePreviewEl=h('div',{});
-  const borrowDayLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'6px',minHeight:'18px',lineHeight:1.4}});
-  const returnDayLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'6px',minHeight:'18px',lineHeight:1.4}});
+  const borrowDateDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
+  const returnDateDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
   const updateOrderBorrowReturnDayLines=()=>{
-    const line=ymd=>{
-      if(!ymd) return '';
-      const di=warehouseDayIndexFromYMD(ymd);
-      return `יום ${WH_DAY_LABELS[di]} · ${fmt(ymd)}`;
-    };
-    borrowDayLine.textContent=line(form.startDate)||'—';
-    returnDayLine.textContent=line(form.endDate)||'—';
+    borrowDateDowLine.textContent=hebrewWeekdayLabelFromYMD(form.startDate)||'—';
+    returnDateDowLine.textContent=hebrewWeekdayLabelFromYMD(form.endDate)||'—';
   };
 
   const updateWarehousePreview=()=>{
@@ -3987,8 +4019,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     ]:[]),
     h('div',{class:'form-group'},h('label',{},'פריט *'), itemSelEl),
     h('div',{class:'form-row'},
-      h('div',{class:'form-group'},h('label',{},'תאריך שאילה'),startDateInp),
-      h('div',{class:'form-group'},h('label',{},'תאריך החזרה'),endDateInp)
+      h('div',{class:'form-group'},h('label',{},'תאריך שאילה'),startDateInp,borrowDateDowLine),
+      h('div',{class:'form-group'},h('label',{},'תאריך החזרה'),endDateInp,returnDateDowLine)
     ),
     dateWarnEl,
     ...(!isAdmin?[h('div',{style:{marginBottom:'6px'}},
@@ -4016,8 +4048,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
       }},'🕐 שעות פעילות המחסן ותקופות סגירה')
     )]:[]),
     h('div',{class:'form-row'},
-      h('div',{class:'form-group'},h('label',{},'שעת שאילה'),makeInput('time',form.startTime,v=>{form.startTime=v;rebuildPickedBody();}),borrowDayLine),
-      h('div',{class:'form-group'},h('label',{},'שעת החזרה'),makeInput('time',form.endTime,v=>{form.endTime=v;rebuildPickedBody();}),returnDayLine)
+      h('div',{class:'form-group'},h('label',{},'שעת שאילה'),makeInput('time',form.startTime,v=>{form.startTime=v;rebuildPickedBody();})),
+      h('div',{class:'form-group'},h('label',{},'שעת החזרה'),makeInput('time',form.endTime,v=>{form.endTime=v;rebuildPickedBody();}))
     ),
     ...(!isAdmin?[warehousePreviewEl]:[]),
     h('div',{class:'form-group'},h('label',{},ORDER_PURPOSE_LABEL),makeInput('text',form.purpose,v=>form.purpose=v,{placeholder:ORDER_PURPOSE_PLACEHOLDER})),
@@ -4087,7 +4119,12 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
             return;
           }
           const skipTot=skippedBusy.length+skippedPast.length;
-          if(skipTot>0&&!confirm(`${skipTot} תאריכים יודלגו (תפוס או שעה עברה). ליצור ${newOrdersP.length} הזמנות?`))return;
+          if(skipTot>0){
+            const lines=[];
+            if(skippedBusy.length) lines.push(`תפוסים (${skippedBusy.length}): ${skippedBusy.join(', ')}`);
+            if(skippedPast.length) lines.push(`עברו / שעות לא תקפות (${skippedPast.length}): ${skippedPast.join(', ')}`);
+            if(!confirm(`${skipTot} תאריכים יודלגו:\n\n${lines.join('\n')}\n\nליצור ${newOrdersP.length} הזמנות?`))return;
+          }
           const allP=[...state.orders,...newOrdersP];
           setState({orders:allP,modal:null});save(SK.orders,allP);
           try{logActivity('יצירת הזמנות',`${newOrdersP.length} הזמנות · מס׳ ${newOrdersP.map(o=>o.orderNum).join(', ')} · ${statusP}`,newOrdersP[0]?.id);}catch(e){}
@@ -4155,7 +4192,6 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           }
         } else {
           const addDays=(ds,n)=>{const p=ds.split('-');const d=new Date(parseInt(p[0]),parseInt(p[1])-1,parseInt(p[2]));d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
-          const fmtD=(d)=>{if(!d)return d;const p=d.split('-');return `${p[2]}-${p[1]}-${p[0]}`;};
           let numTimes=recurring.times;
           if(recurring.mode==='date'){
             if(!recurring.untilDate){alert('נא לבחור תאריך סיום');return;}
@@ -4178,7 +4214,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           };
           const pushOne=(sd,ed)=>{
             const busy=getConflicts(form.itemId,sd,ed,form.startTime,form.endTime,null).length>0;
-            if(busy){skipped.push(fmtD(sd));}
+            if(busy){skipped.push(`${fmt(sd)} · ${form.startTime||''}–${form.endTime||''}`);}
             else{newOrders.push({...form,id:genId(),orderNum:ordN++,startDate:sd,endDate:ed,itemName:item?.name,itemBarcode:item?.barcode||'',journalId:item?.journalId||'',status,createdAt:new Date().toISOString(),recurringGroupId:groupId});}
           };
           if(recurring.mode==='times'){
@@ -4234,7 +4270,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           }
           if(!newOrders.length){alert('כל המועדים תפוסים!');return;}
           if(skipped.length){
-            if(!confirm(`${skipped.length} מועדים תפוסים ויידלגו:\n${skipped.join(', ')}\n\nלהמשיך וליצור ${newOrders.length} הזמנות?`))return;
+            const listTxt=skipped.join('\n');
+            if(!confirm(`${skipped.length} מועדים תפוסים ויידלגו (תאריך · שעות):\n\n${listTxt}\n\nלהמשיך וליצור ${newOrders.length} הזמנות?`))return;
           }
           const allOrders=[...state.orders,...newOrders];
           setState({orders:allOrders,modal:null});save(SK.orders,allOrders);
@@ -4396,6 +4433,15 @@ function renderRecurringModal(preItemId, journalId, preDate){
     return s;
   };
 
+  const recurStartDateDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
+  const recurStartDateInp=(()=>{
+    const i=h('input',{type:'date',value:String(form.startDate),min:today()});
+    const syncDow=()=>{recurStartDateDowLine.textContent=hebrewWeekdayLabelFromYMD(form.startDate)||'';};
+    i.addEventListener('change',e=>{form.startDate=e.target.value;syncDow();rebuildPreview();});
+    syncDow();
+    return i;
+  })();
+
   setTimeout(rebuildPreview,50);
 
   const modal=h('div',{class:'modal',style:{maxWidth:'580px',width:'100%',maxHeight:'90vh',overflowY:'auto'}},
@@ -4428,7 +4474,7 @@ function renderRecurringModal(preItemId, journalId, preDate){
       })()
     ),
     h('div',{class:'form-row'},
-      h('div',{class:'form-group'},h('label',{},'תאריך התחלה'),makeInp('date',form.startDate,v=>form.startDate=v,{min:today()})),
+      h('div',{class:'form-group'},h('label',{},'תאריך התחלה'),recurStartDateInp,recurStartDateDowLine),
       h('div',{class:'form-group'},h('label',{},'סוג מחזוריות'),
         makeSel([['weekly','שבועי'],['biweekly','דו-שבועי']],form.recType,v=>form.recType=v)
       )
@@ -4490,8 +4536,9 @@ function renderRecurringModal(preItemId, journalId, preDate){
         }
         let proceed=true;
         if(conflictDates.length>0){
-          const fmt3=conflictDates.map(d=>fmt2(d)).join(', ');
-          proceed=confirm(`${conflictDates.length} מועדים תפוסים:\n${fmt3}\n\nלהמשיך וליצור ${freeDates.length} הזמנות (ולדלג על המועדים התפוסים)?`);
+          const timeRange=`${form.startTime||''}–${form.endTime||''}`;
+          const fmt3=conflictDates.map(d=>`${fmt2(d)} · ${timeRange}`).join('\n');
+          proceed=confirm(`${conflictDates.length} מועדים תפוסים (תאריך · שעות):\n\n${fmt3}\n\nלהמשיך וליצור ${freeDates.length} הזמנות (ולדלג על המועדים התפוסים)?`);
         }
         if(!proceed)return;
         const groupId='rec_'+genId();
