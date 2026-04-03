@@ -6419,7 +6419,7 @@ function openLoanDetail(o){
           const prevFree=Array.from(new Set([...(prev.freeTextItems||[]),...prevReturnedFree]));
           const totalItems=prevExtras.length+prevFree.length;
           const u=state.users.find(u=>u.id===prev.userId)||{name:getUserName(prev.userId)};
-          const row=h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px',borderBottom:'1px solid var(--border)',fontSize:'13px'}},
+        const row=h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px',borderBottom:'1px solid var(--border)',fontSize:'13px'}},
             h('div',{},
               h('div',{style:{fontWeight:'700'}},`#${prev.orderNum||'—'} — ${u.name}`),
               h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}},`תאריך שאילה: ${fmt(prev.startDate)} ${prev.startTime||''}`)
@@ -6438,6 +6438,11 @@ function openLoanDetail(o){
                 if(freeTextItems.includes(txt)){skipped++;return;}
                 freeTextItems.push(txt);added++;
               });
+              // אם היה חיפוש פנימי פעיל ברשימת ההשאלה, ננקה אותו כדי לראות את כל הפריטים שהועתקו
+              if(listFilterQ){
+                listFilterQ='';
+                if(listFilterInp) listFilterInp.value='';
+              }
               if(['סופק','הוחזר חלקית'].includes(o.status)) autoSaveReturnsUi(); else autoSave();
               renderList();
               open=false;body.style.display='none';
