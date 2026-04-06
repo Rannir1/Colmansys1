@@ -2382,7 +2382,7 @@ function renderApp(){
           const pid=n.pageId||n.id;
           const isActive=page===pid;
           if(n.sub&&n.id==='inventory'&&n.pageId==='inventory') return h('div',{class:`nav-item sub${isActive?' active':''}`,onclick:()=>{closeMobileSidebar();setState({page:'inventory'});}},h('span',{},'📦'),' רשימת המלאי');
-          return h('div',{class:`nav-item${n.sub?' sub':''}${isActive?' active':''}`,onclick:()=>{closeMobileSidebar();setState({page:pid});}},h('span',{},n.icon),' ',n.label);
+          return h('div',{class:`nav-item${n.sub?' sub':''}${isActive?' active':''}`,onclick:()=>{closeMobileSidebar();setState(pid==='journals'?{page:pid,journalDate:today()}:{page:pid});}},h('span',{},n.icon),' ',n.label);
         })
       ),
       h('div',{class:'sidebar-user'},
