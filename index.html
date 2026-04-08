@@ -1795,6 +1795,154 @@ function getSession(){
   return null;
 }
 function clearSession(){sessionStorage.removeItem(SESSION_KEY);}
+// ── ארגון: OpenID Connect (PKCE). בקובץ זה (פרסום) SSO זמין כשמופעל בהגדרות — אינו תלוי ב-EQS_PUBLIC_DEPLOY.
+const OIDC_STORE_STATE='eqs_oidc_state',OIDC_STORE_VERIFIER='eqs_oidc_verifier',OIDC_STORE_ISSUER='eqs_oidc_issuer',OIDC_STORE_CLIENT='eqs_oidc_client_id',OIDC_STORE_REDIRECT='eqs_oidc_redirect',OIDC_STORE_CLAIM_EMAIL='eqs_oidc_cemail',OIDC_STORE_CLAIM_TZ='eqs_oidc_ctz',OIDC_LAST_ERR='eqs_oidc_last_err';
+function getOidcSettings(){
+  const s=state.settings||{};
+  return {
+    enabled:!!s.oidcEnabled,
+    issuer:String(s.oidcIssuer||'').trim().replace(/\/$/,''),
+    clientId:String(s.oidcClientId||'').trim(),
+    redirectUri:String(s.oidcRedirectUri||'').trim(),
+    scopes:String(s.oidcScopes||'openid profile email').trim()||'openid profile email',
+    claimEmail:String(s.oidcClaimEmail||'email,preferred_username,upn').trim()||'email',
+    claimTz:String(s.oidcClaimTz||'').trim(),
+  };
+}
+function oidcCurrentRedirectUri(cfg){
+  if(cfg&&cfg.redirectUri) return cfg.redirectUri;
+  try{const u=new URL(location.href);u.search='';u.hash='';return u.toString();}catch(e){return location.origin+location.pathname;}
+}
+function oidcBase64UrlEncode(buf){
+  const bytes=buf instanceof Uint8Array?buf:new Uint8Array(buf);
+  let bin='';
+  for(let i=0;i<bytes.length;i++)bin+=String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function oidcRandomVerifier(){
+  const a=new Uint8Array(32);crypto.getRandomValues(a);return oidcBase64UrlEncode(a);
+}
+function oidcS256Challenge(verifier){
+  return crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier)).then(b=>oidcBase64UrlEncode(new Uint8Array(b)));
+}
+async function oidcDiscover(issuer){
+  const base=String(issuer||'').replace(/\/$/,'');
+  const r=await fetch(base+'/.well-known/openid-configuration');
+  if(!r.ok)throw new Error('Discovery '+r.status);
+  return r.json();
+}
+function oidcParseJwtPayload(jwt){
+  try{
+    const p=String(jwt||'').split('.')[1];if(!p)return null;
+    const b=p.replace(/-/g,'+').replace(/_/g,'/');
+    const pad=b.length%4?'='.repeat(4-b.length%4):'';
+    return JSON.parse(atob(b+pad));
+  }catch(e){return null;}
+}
+function oidcFindLocalUserFromClaims(claims,claimEmailCsv,claimTz){
+  const users=load(SK.users,ALL_STUDENTS);
+  const tryEmail=(e)=>{const em=String(e||'').toLowerCase().trim();if(!em)return null;return users.find(u=>String(u.email||'').toLowerCase().trim()===em)||null;};
+  for(const c of String(claimEmailCsv||'').split(',').map(x=>x.trim()).filter(Boolean)){
+    const v=claims[c];
+    if(v){const u=tryEmail(v);if(u)return u;}
+  }
+  const tzK=String(claimTz||'').trim();
+  if(tzK){
+    const raw=claims[tzK];
+    const tzNorm=String(raw||'').replace(/\D/g,'');
+    if(tzNorm){const u=users.find(x=>String(x.tz||'').replace(/\D/g,'')===tzNorm);if(u)return u;}
+  }
+  return null;
+}
+function oidcClearUrlParams(keys){
+  try{
+    const u=new URL(location.href);
+    keys.forEach(k=>u.searchParams.delete(k));
+    history.replaceState({},'',u.toString());
+  }catch(e){}
+}
+async function oidcHandleRedirectIfPresent(){
+  const url=new URL(location.href);
+  const code=url.searchParams.get('code');
+  const stateP=url.searchParams.get('state');
+  const err=url.searchParams.get('error');
+  if(err){
+    const desc=url.searchParams.get('error_description')||'';
+    sessionStorage.removeItem(OIDC_STORE_STATE);sessionStorage.removeItem(OIDC_STORE_VERIFIER);
+    sessionStorage.setItem(OIDC_LAST_ERR,err==='access_denied'?'בוטלה ההתחברות אצל ספק הזהות.':('SSO: '+err+(desc?(' — '+decodeURIComponent(desc.replace(/\+/g,' '))):'')));
+    oidcClearUrlParams(['code','state','error','error_description','session_state']);
+    return;
+  }
+  if(!code||!stateP)return;
+  const stOk=sessionStorage.getItem(OIDC_STORE_STATE);
+  const verifier=sessionStorage.getItem(OIDC_STORE_VERIFIER);
+  const issuer=sessionStorage.getItem(OIDC_STORE_ISSUER);
+  const clientId=sessionStorage.getItem(OIDC_STORE_CLIENT);
+  const redirectUri=sessionStorage.getItem(OIDC_STORE_REDIRECT);
+  const cEmail=sessionStorage.getItem(OIDC_STORE_CLAIM_EMAIL)||'email,preferred_username,upn';
+  const cTz=sessionStorage.getItem(OIDC_STORE_CLAIM_TZ)||'';
+  if(!stOk||stOk!==stateP||!verifier||!issuer||!clientId||!redirectUri){
+    sessionStorage.removeItem(OIDC_STORE_STATE);sessionStorage.removeItem(OIDC_STORE_VERIFIER);
+    oidcClearUrlParams(['code','state','session_state']);
+    return;
+  }
+  sessionStorage.removeItem(OIDC_STORE_STATE);sessionStorage.removeItem(OIDC_STORE_VERIFIER);
+  sessionStorage.removeItem(OIDC_STORE_ISSUER);sessionStorage.removeItem(OIDC_STORE_CLIENT);
+  sessionStorage.removeItem(OIDC_STORE_REDIRECT);sessionStorage.removeItem(OIDC_STORE_CLAIM_EMAIL);sessionStorage.removeItem(OIDC_STORE_CLAIM_TZ);
+  oidcClearUrlParams(['code','state','session_state']);
+  const disc=await oidcDiscover(issuer);
+  const body=new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:redirectUri,client_id:clientId,code_verifier:verifier});
+  const tr=await fetch(disc.token_endpoint,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});
+  const tok=await tr.json().catch(()=>({}));
+  if(!tr.ok)throw new Error(tok.error_description||tok.error||('Token '+tr.status));
+  const claims=oidcParseJwtPayload(tok.id_token||'');
+  if(!claims)throw new Error('אסימון מזהה חסר או פגום');
+  const user=oidcFindLocalUserFromClaims(claims,cEmail,cTz);
+  if(!user){
+    sessionStorage.setItem(OIDC_LAST_ERR,'לא נמצאה רשומה מתאימה ב«ניהול משתמשים». יש לוודא שהמייל או ת.ז. בחשבון הארגוני תואמים למה שמוגדר אצלכם במערכת (או להוסיף claim מותאם לת.ז.).');
+    return;
+  }
+  clearBroadcastNoticeSessionDismiss(user.id);
+  createSession(user.id);
+  state.user=user;
+  state.page='dashboard';
+  state.users=load(SK.users,ALL_STUDENTS);
+}
+function oidcStartLogin(){
+  const cfg=getOidcSettings();
+  const errEl=document.getElementById('login-err');
+  if(!cfg.enabled||!cfg.issuer||!cfg.clientId){
+    if(errEl)errEl.innerHTML='<div class="alert alert-danger">התחברות ארגונית לא הוגדרה (מנהל: הגדרות → SSO).</div>';
+    return;
+  }
+  Promise.all([oidcDiscover(cfg.issuer),oidcRandomVerifier()]).then(async ([disc,ver])=>{
+    const challenge=await oidcS256Challenge(ver);
+    const st=crypto.randomUUID?crypto.randomUUID():(Math.random().toString(36).slice(2)+Date.now().toString(36));
+    const red=oidcCurrentRedirectUri(cfg);
+    sessionStorage.setItem(OIDC_STORE_VERIFIER,ver);
+    sessionStorage.setItem(OIDC_STORE_STATE,st);
+    sessionStorage.setItem(OIDC_STORE_ISSUER,cfg.issuer);
+    sessionStorage.setItem(OIDC_STORE_CLIENT,cfg.clientId);
+    sessionStorage.setItem(OIDC_STORE_REDIRECT,red);
+    sessionStorage.setItem(OIDC_STORE_CLAIM_EMAIL,cfg.claimEmail);
+    sessionStorage.setItem(OIDC_STORE_CLAIM_TZ,cfg.claimTz);
+    const params=new URLSearchParams({client_id:cfg.clientId,redirect_uri:red,response_type:'code',scope:cfg.scopes,state:st,code_challenge:challenge,code_challenge_method:'S256'});
+    window.location.href=disc.authorization_endpoint+'?'+params.toString();
+  }).catch(e=>{
+    if(errEl)errEl.innerHTML='<div class="alert alert-danger">'+('SSO: '+(e.message||String(e)))+'</div>';
+  });
+}
+function eqsRestoreSessionFromStorage(){
+  const s=getSession();
+  if(!s||!s.userId)return;
+  const u=state.users.find(x=>String(x.id)===String(s.userId));
+  if(u){state.user=u;state.page='dashboard';}
+  else{try{clearSession();}catch(e){}}
+}
+async function eqsBootstrapAuth(){
+  try{await oidcHandleRedirectIfPresent();}catch(e){console.error(e);sessionStorage.setItem(OIDC_LAST_ERR,'התחברות ארגונית נכשלה: '+(e.message||String(e)));}
+  if(!state.user)eqsRestoreSessionFromStorage();
+}
 // Rate limiting for login attempts
 const LOGIN_ATTEMPTS_KEY='eqs_login_attempts';
 function checkRateLimit(tz){
@@ -2187,7 +2335,10 @@ function statusBadge(s){const m={'תקין':'badge-green','חסר':'badge-red','
 function render(){
   const root = document.getElementById('root');
   root.innerHTML = '';
-  if(!state.user){root.appendChild(renderLogin());return;}
+  if(!state.user){
+    state.settings=load(SK.settings,state.settings||{});
+    root.appendChild(renderLogin());return;
+  }
   state.settings=load(SK.settings,state.settings||{});
   // Critical storage warning (>90%)
   try{
@@ -2211,6 +2362,7 @@ function render(){
 function renderLogin(){
   let tzVal='',passVal='';
   const cfg = state.settings;
+  const oidcCfg=getOidcSettings();
   const wrap = h('div',{class:'login-page'},
     h('div',{class:'login-card'},
       h('div',{class:'login-logo'},
@@ -2233,6 +2385,19 @@ function renderLogin(){
         ' תחת הגדרות → «☁️ סנכרון». אחרי הגדרה חד־פעמית, העדכונים אמורים להגיע אוטומטית לכולם (כולל Realtime).'
       ):h('span',{}),
       h('div',{id:'login-err'}),
+      ...(oidcCfg.enabled&&oidcCfg.issuer&&oidcCfg.clientId?[
+        h('div',{class:'form-group',style:{marginBottom:'10px'}},
+          h('button',{type:'button',class:'btn btn-secondary w-full',style:{justifyContent:'center',padding:'11px',borderColor:'var(--accent)',color:'var(--accent)'},onclick:()=>oidcStartLogin()},'🔐 התחברות ארגונית (SSO)')
+        ),
+        h('div',{style:{textAlign:'center',fontSize:'12px',color:'var(--text3)',margin:'-4px 0 12px'}},'או עם ת.ז. וסיסמה כרגיל')
+      ]:[]),
+      (()=>{
+        try{
+          const oe=sessionStorage.getItem(OIDC_LAST_ERR);
+          if(oe){sessionStorage.removeItem(OIDC_LAST_ERR);queueMicrotask(()=>{const el=document.getElementById('login-err');if(el)el.innerHTML='<div class="alert alert-danger">'+oe+'</div>';});}
+        }catch(e){}
+        return h('span',{});
+      })(),
       h('div',{class:'form-group'},
         h('label',{},'תעודת זהות'),
         (()=>{const i=h('input',{placeholder:'הזן מספר ת.ז'});i.addEventListener('input',e=>tzVal=e.target.value);i.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin(tzVal,passVal)});return i})()
@@ -10331,7 +10496,8 @@ function renderSettings(){
         h('button',{class:`btn btn-sm ${activeTab==='email'?'btn-primary':'btn-secondary'}`,style:{fontSize:'12px'},onclick:()=>setState({settingsTab:'email'})},'מיילים / Outlook'),
         h('button',{class:`btn btn-sm ${activeTab==='broadcast'?'btn-primary':'btn-secondary'}`,style:{fontSize:'12px'},onclick:()=>setState({settingsTab:'broadcast'})},'📢 שידור'),
         h('button',{class:`btn btn-sm ${activeTab==='warehouse'?'btn-primary':'btn-secondary'}`,style:{fontSize:'12px'},onclick:()=>setState({settingsTab:'warehouse'})},'🕐 מחסן'),
-        h('button',{class:`btn btn-sm ${activeTab==='cloud'?'btn-primary':'btn-secondary'}`,style:{fontSize:'12px'},onclick:()=>setState({settingsTab:'cloud'})},'☁️ סנכרון')
+        h('button',{class:`btn btn-sm ${activeTab==='cloud'?'btn-primary':'btn-secondary'}`,style:{fontSize:'12px'},onclick:()=>setState({settingsTab:'cloud'})},'☁️ סנכרון'),
+        h('button',{class:`btn btn-sm ${activeTab==='sso'?'btn-primary':'btn-secondary'}`,style:{fontSize:'12px'},onclick:()=>setState({settingsTab:'sso'})},'🔐 SSO / ארגון')
       )
     ),
     msgEl,
@@ -10427,6 +10593,58 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
           sqlHelp
         );
       })()
+    ),
+    h('div',{id:'settings_sso',class:'card mb-4',style:{display:activeTab==='sso'?'block':'none'}},
+      h('h2',{style:{fontSize:'15px',fontWeight:'700',marginBottom:'8px'}},'🔐 התחברות ארגונית (OpenID Connect + PKCE)'),
+      h('div',{style:{fontSize:'12px',color:'var(--text3)',lineHeight:1.6,marginBottom:'14px'}},
+        'עבור ',
+        h('strong',{},'אנשי טכנולוגיה בארגון'),
+        ': יישום SPA עם PKCE ב־Entra / Keycloak וכו׳. ',
+        h('strong',{},'Redirect URI'),
+        ' חייב להתאים לכתובת הדף בשרת. אישור לפי ',
+        h('strong',{},'מייל'),
+        ' (claims: ',
+        h('code',{},'email'),
+        ' / ',
+        h('code',{},'preferred_username'),
+        ' וכו׳) ואופציונלית לפי ',
+        h('strong',{},'ת.ז.'),
+        ' מ־claim מותאם. ',
+        h('strong',{},'חובה'),
+        ' רשומה קיימת ב«ניהול משתמשים». משתמשים מגיעים מסנכרון הענן — יש לוודא שמיילי ה־IdP תואמים.'
+      ),
+      h('div',{class:'form-group flex items-center gap-2'},
+        (()=>{const c=h('input',{type:'checkbox',style:{width:'auto'}});c.checked=!!cfg.oidcEnabled;c.addEventListener('change',e=>cfg.oidcEnabled=e.target.checked);return c})(),
+        h('span',{style:{fontSize:'13px'}},'הפעל כפתור «התחברות ארגונית» במסך הכניסה')
+      ),
+      h('div',{class:'form-group'},
+        h('label',{},'Issuer'),
+        (()=>{const i=h('input',{style:{width:'100%',maxWidth:'560px',boxSizing:'border-box'},placeholder:'https://login.microsoftonline.com/{tenant}/v2.0'});i.value=cfg.oidcIssuer||'';i.addEventListener('input',e=>cfg.oidcIssuer=e.target.value.trim());return i})()
+      ),
+      h('div',{class:'form-group'},
+        h('label',{},'מזהה יישום (Client ID)'),
+        (()=>{const i=h('input',{style:{width:'100%',maxWidth:'560px',boxSizing:'border-box'}});i.value=cfg.oidcClientId||'';i.addEventListener('input',e=>cfg.oidcClientId=e.target.value.trim());return i})()
+      ),
+      h('div',{class:'form-group'},
+        h('label',{},'Redirect URI (ריק = כתובת הדף הנוכחית בלי query)'),
+        (()=>{const i=h('input',{style:{width:'100%',maxWidth:'560px',boxSizing:'border-box'}});i.value=cfg.oidcRedirectUri||'';i.addEventListener('input',e=>cfg.oidcRedirectUri=e.target.value.trim());return i})()
+      ),
+      h('div',{class:'form-group'},
+        h('label',{},'Scopes'),
+        (()=>{const i=h('input',{style:{width:'100%',maxWidth:'560px',boxSizing:'border-box'},placeholder:'openid profile email'});i.value=cfg.oidcScopes||'';i.addEventListener('input',e=>cfg.oidcScopes=e.target.value);return i})()
+      ),
+      h('div',{class:'form-group'},
+        h('label',{},'שמות טענות למייל (פסיקים)'),
+        (()=>{const i=h('input',{style:{width:'100%',maxWidth:'560px',boxSizing:'border-box'}});i.value=cfg.oidcClaimEmail!=null?cfg.oidcClaimEmail:'email,preferred_username,upn';i.addEventListener('input',e=>cfg.oidcClaimEmail=e.target.value);return i})()
+      ),
+      h('div',{class:'form-group'},
+        h('label',{},'שם claim לת.ז. (אופציונלי)'),
+        (()=>{const i=h('input',{style:{width:'100%',maxWidth:'560px',boxSizing:'border-box'}});i.value=cfg.oidcClaimTz||'';i.addEventListener('input',e=>cfg.oidcClaimTz=e.target.value.trim());return i})()
+      ),
+      h('button',{class:'btn btn-primary',style:{marginTop:'6px'},onclick:()=>{
+        setState({settings:cfg});save(SK.settings,cfg);
+        msgEl.innerHTML='<div class="alert alert-success">✓ נשמרו הגדרות SSO</div>';setTimeout(()=>msgEl.innerHTML='',2800);
+      }},'💾 שמור הגדרות SSO')
     ),
     h('div',{id:'settings_broadcast',class:'card mb-4',style:{display:activeTab==='broadcast'?'block':'none'}},
       h('h2',{style:{fontSize:'15px',fontWeight:'700',marginBottom:'6px'}},'📢 הודעת שידור למשתמשים'),
@@ -10976,8 +11194,11 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
 // ============================================================
 // START
 // ============================================================
-render();
-cloudSyncAfterLoad();
+(async function eqsStart(){
+  await eqsBootstrapAuth();
+  render();
+  cloudSyncAfterLoad();
+})();
 </script>
 </body>
 </html>
