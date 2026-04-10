@@ -17,6 +17,17 @@
   --text2:#94a3b8;--text3:#64748b;--radius:12px;
   --shadow:0 4px 24px rgba(0,0,0,.4)
 }
+html[data-ui="aurora"]{
+  --bg:#080c14;--bg2:#111827;--bg3:#1a2332;--bg4:#243045;
+  --border:rgba(125,211,252,0.2);--accent:#22d3ee;--text:#e8f4ff;
+  --text2:#94b8d6;--text3:#5c7a96;
+  --shadow:0 8px 32px rgba(8,20,40,.55)
+}
+html[data-ui="aurora"] .sidebar{
+  background:linear-gradient(165deg,#0c1628 0%,#1a1030 55%,#0f172a 100%);
+  border-left-color:rgba(125,211,252,0.15)
+}
+.modal-loan-prep{max-width:min(1040px,96vw)!important;width:100%}
 body{font-family:'Heebo',Arial,sans-serif;direction:rtl;background:var(--bg);color:var(--text);min-height:100vh}
 .app{display:flex;min-height:100vh;min-width:0}
 .sidebar{width:240px;min-width:240px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;right:0;bottom:0;z-index:100;overflow-y:auto}
@@ -222,7 +233,62 @@ const load=(k,d)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}
 const CLOUD_SYNC_CFG_KEY='eqs_cloud_sync';
 const CLOUD_DEFAULT_URL='https://fywheypoiwsoerkthwua.supabase.co';
 const CLOUD_DEFAULT_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ5d2hleXBvaXdzb2Vya3Rod3VhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NDg1NjMsImV4cCI6MjA5MDQyNDU2M30.7VdGmszM4MgK1kA3Gr3NBYDI4erCh69B_V_ifZRyocs';
-const CLOUD_EXTRA_SYNC_KEYS=['eqs_hiddenJournals','eqs_stockcount_history','eqs_stockcount_active','eqs_suppliers','eqs_stockcount','eqs_logo_src'];
+const CLOUD_EXTRA_SYNC_KEYS=['eqs_hiddenJournals','eqs_stockcount_history','eqs_stockcount_active','eqs_suppliers','eqs_stockcount','eqs_logo_src','eqs_item_field_history'];
+const ITEM_FIELD_HISTORY_KEY='eqs_item_field_history';
+const LAST_FULL_BACKUP_KEY='eqs_last_full_backup_iso';
+const ITEM_FIELD_LABELS_HE={
+  barcode:'ברקוד',name:'שם',type:'סוג',manufacturer:'יצרן',serial:'מספר סידורי',
+  journalId:'יומן',supplier:'ספק',purchaseDate:'תאריך רכישה',warrantyDate:'באחריות עד',
+  price:'מחיר',invoiceNum:'חשבונית',location:'מיקום',status:'סטטוס',loanable:'ניתן להשאלה',
+  notes:'הערות',components:'רכיבים',image:'תמונה',invoiceFile:'מסמך/חשבונית'
+};
+function loadItemFieldHistory(){return load(ITEM_FIELD_HISTORY_KEY,{});}
+function saveItemFieldHistory(map){save(ITEM_FIELD_HISTORY_KEY,map);}
+function recordItemFieldEdits(itemId,prev,next,meta){
+  if(!itemId||!prev||!next) return;
+  const jName=(id)=>{const j=(state.journals||[]).find(x=>String(x.id)===String(id));return j?j.name:String(id||'—');};
+  const normLoan=v=>(v===true||v==='true'?'כן':v===false||v==='false'?'לא':String(v??''));
+  const keys=['barcode','name','type','manufacturer','serial','journalId','supplier','purchaseDate','warrantyDate','price','invoiceNum','location','status','loanable','notes'];
+  const changes={};
+  for(const k of keys){
+    let a=prev[k],b=next[k];
+    if(k==='loanable'){a=normLoan(a);b=normLoan(b);}
+    else{a=a==null?'':String(a);b=b==null?'':String(b);}
+    if(a===b) continue;
+    let fa=a||'—',fb=b||'—';
+    if(k==='journalId'){fa=jName(prev.journalId);fb=jName(next.journalId);}
+    changes[k]={from:fa,to:fb};
+  }
+  const pC=JSON.stringify(prev.components||[]);
+  const nC=JSON.stringify(next.components||[]);
+  if(pC!==nC) changes.components={from:`${(prev.components||[]).length} רכיבים`,to:`${(next.components||[]).length} רכיבים`};
+  if((prev.image||'')!==(next.image||'')) changes.image={from:prev.image?'יש תמונה':'אין',to:next.image?'יש תמונה':'אין'};
+  if((prev.invoiceFile||'')!==(next.invoiceFile||'')) changes.invoiceFile={from:prev.invoiceFile?'קובץ מצורף':'ללא',to:next.invoiceFile?'קובץ מצורף':'ללא'};
+  if(!Object.keys(changes).length) return;
+  const all=loadItemFieldHistory();
+  const arr=[...(all[itemId]||[])];
+  arr.push({ts:new Date().toISOString(),userId:meta?.userId||'',userName:meta?.userName||'',changes});
+  while(arr.length>100) arr.shift();
+  all[itemId]=arr;
+  saveItemFieldHistory(all);
+}
+function markFullBackupDone(){try{localStorage.setItem(LAST_FULL_BACKUP_KEY,new Date().toISOString());}catch(e){}}
+function getBackupReminderBannerInfo(){
+  try{
+    const raw=localStorage.getItem(LAST_FULL_BACKUP_KEY);
+    const days=Math.max(1,Math.min(90,parseInt(state.settings?.backupReminderDays,10)||7));
+    const ms=days*86400000;
+    const last=raw?new Date(raw).getTime():0;
+    const overdue=!last||Date.now()-last>ms;
+    return{
+      overdue,
+      days,
+      lastLabel:last?new Date(last).toLocaleString('he-IL'):'מעולם לא סומן גיבוי מלא מהכפתור'
+    };
+  }catch(e){
+    return{overdue:true,days:7,lastLabel:'—'};
+  }
+}
 const CLOUD_DENY_KEYS=new Set([CLOUD_SYNC_CFG_KEY,'eqs_demo_mode','eqs_login_attempts','eqs_cloud_last_server_ms']);
 let _cloudBatchDepth=0;
 let _cloudPushTimer=null;
@@ -738,6 +804,17 @@ try {
         ch=true;
       }
       if(!Array.isArray(s.warehouseClosures)){s.warehouseClosures=[];ch=true;}
+      if(ch) localStorage.setItem(SK.settings,JSON.stringify(s));
+    }catch(e){}
+  })();
+  (function patchUiBackupSettings(){
+    try{
+      const raw=localStorage.getItem(SK.settings);
+      if(!raw) return;
+      const s=JSON.parse(raw);
+      let ch=false;
+      if(s.backupReminderDays===undefined){s.backupReminderDays=7;ch=true;}
+      if(s.uiTheme===undefined){s.uiTheme='default';ch=true;}
       if(ch) localStorage.setItem(SK.settings,JSON.stringify(s));
     }catch(e){}
   })();
@@ -1548,6 +1625,66 @@ function getConflicts(itemId, startDate, endDate, startTime, endTime, excludeOrd
   });
 }
 
+/** הזמנות שתופסות פריט מלאי בטווח תאריכים (לפי תאריך שאילה/החזרה), למעט סטטוסים שלא נותנים שיבוץ */
+function getReservationsForItemInDateRange(itemId, fromYmd, toYmd){
+  return state.orders.filter(o=>{
+    if(o.status==='נדחתה'||o.status==='הוחזר'||o.status==='לא נלקחה') return false;
+    if(o.startDate>toYmd||o.endDate<fromYmd) return false;
+    return orderReservesInventoryId(o,itemId);
+  }).sort((a,b)=>{
+    const ka=(a.startDate||'')+' '+String(a.startTime||'00:00');
+    const kb=(b.startDate||'')+' '+String(b.startTime||'00:00');
+    return ka.localeCompare(kb);
+  });
+}
+function orderIntervalMs(o){
+  const sd=parseYMDLocal(o.startDate);
+  if(!sd) return null;
+  const st=String(o.startTime||'00:00').trim();
+  const pm=st.match(/^(\d{1,2}):(\d{2})/);
+  const sh=pm?parseInt(pm[1],10):0, sm=pm?parseInt(pm[2],10):0;
+  sd.setHours(sh,sm||0,0,0);
+  const ed=parseYMDLocal(o.endDate)||parseYMDLocal(o.startDate);
+  if(!ed) return null;
+  const et=String(o.endTime||'23:59').trim();
+  const pm2=et.match(/^(\d{1,2}):(\d{2})/);
+  const eh=pm2?parseInt(pm2[1],10):23, em2=pm2?parseInt(pm2[2],10):59;
+  ed.setHours(eh,em2||0,59,999);
+  return {start:sd.getTime(),end:ed.getTime(),order:o};
+}
+function mergeBusyIntervalsMs(ivs){
+  if(!ivs.length) return [];
+  const s=ivs.filter(x=>x.end>x.start).slice().sort((a,b)=>a.start-b.start);
+  const out=[];
+  for(const iv of s){
+    if(!out.length){out.push({start:iv.start,end:iv.end});continue;}
+    const L=out[out.length-1];
+    if(iv.start<=L.end) L.end=Math.max(L.end,iv.end);
+    else out.push({start:iv.start,end:iv.end});
+  }
+  return out;
+}
+function freeIntervalsInWindow(winStart,winEnd,busyMerged){
+  const free=[];
+  let t=winStart;
+  for(const b of busyMerged){
+    if(b.start>winEnd) break;
+    const bs=Math.max(b.start,winStart), be=Math.min(b.end,winEnd);
+    if(t<bs) free.push({start:t,end:bs});
+    t=Math.max(t,be,b.end);
+  }
+  if(t<winEnd) free.push({start:t,end:winEnd});
+  return free.filter(f=>f.end>f.start);
+}
+function fmtMsRangeHe(msA, msB){
+  const a=new Date(msA), b=new Date(msB);
+  const d1=a.toLocaleDateString('he-IL',{weekday:'short',day:'numeric',month:'short'});
+  const d2=b.toLocaleDateString('he-IL',{weekday:'short',day:'numeric',month:'short'});
+  const t1=`${String(a.getHours()).padStart(2,'0')}:${String(a.getMinutes()).padStart(2,'0')}`;
+  const t2=`${String(b.getHours()).padStart(2,'0')}:${String(b.getMinutes()).padStart(2,'0')}`;
+  return `${d1} ${t1} — ${d2} ${t2}`;
+}
+
 /** מפתח סדרה לעריכה/מחיקה — תאריכים נבחרים / מחזורי / קבוצתי */
 function getOrderSeriesKey(o){
   if(o.recurringGroupId) return {field:'recurringGroupId',id:o.recurringGroupId};
@@ -2340,6 +2477,9 @@ function render(){
     root.appendChild(renderLogin());return;
   }
   state.settings=load(SK.settings,state.settings||{});
+  try{
+    document.documentElement.setAttribute('data-ui',state.settings?.uiTheme==='aurora'?'aurora':'default');
+  }catch(e){}
   // Critical storage warning (>90%)
   try{
     const pct=storageUsagePercentUsed();
@@ -2475,6 +2615,7 @@ function renderApp(){
       items.push({id:'inventory',label:'ניהול מלאי',icon:'🗄️'});
       items.push({id:'stockcount',label:'ספירת מלאי',icon:'🔢',sub:true});
       items.push({id:'removed_inventory',label:'פריטים שהוצאו',icon:'🗃️',sub:true});
+      items.push({id:'journal_inventory',label:'מצלמות — 14 יום',icon:'📷',sub:true});
     }
     // דוחות
     if(isAdmin) items.push({id:'reports',label:'דוחות',icon:'📊'});
@@ -2584,6 +2725,16 @@ function renderApp(){
           h('strong',{},'אין צורך ללחוץ'),
           ' על «משיכה» או «דחיפה» בשגרה — הכפתורים האלה רק לתקלות.'
         ));
+        if(isAdmin){
+          const bk=getBackupReminderBannerInfo();
+          if(bk.overdue)rows.push(h('div',{class:'alert alert-info',style:{fontSize:'12px',lineHeight:1.55,padding:'10px 14px',marginBottom:'12px',border:'1px solid rgba(245,158,11,0.45)',background:'rgba(245,158,11,0.08)'}},
+            h('strong',{},'גיבוי JSON: '),
+            `לא סומן גיבוי מלא מהכפתור במשך יותר מ־${bk.days} ימים (או מעולם). `,
+            h('span',{style:{color:'var(--text2)'}},`אחרון: ${bk.lastLabel}. `),
+            'דפדפנים לא יכולים להוריד קובץ ברקע — מומלץ ללחוץ «גבה הכל» בהגדרות או לתזמן התראה ביומן.',
+            h('button',{class:'btn btn-sm btn-primary',style:{marginRight:'10px',marginTop:'8px'},onclick:()=>setState({page:'settings'})},'פתח הגדרות — גיבוי')
+          ));
+        }
         return rows;
       })(),
       ...(()=>{
@@ -2597,6 +2748,7 @@ function renderApp(){
         if(page==='stockcount'&&isAdmin) return [renderStockCount()];
         if(page==='removed_inventory'&&isAdmin) return [renderRemovedInventory()];
         if(page==='stock_count'&&isAdmin) return [renderStockCount()];
+        if(page==='journal_inventory'&&isAdmin) return [renderJournalInventoryProbe()];
         if(page==='users') return [renderUsers()];
         if(page==='kits'&&isAdmin) return [renderKits()];
         if(page==='reports'&&isAdmin) return [renderReports()];
@@ -2762,8 +2914,24 @@ function renderDashboard(){
             const isMiddle=!isStart&&!isEnd&&o.startDate<tod&&effectiveEndDate>tod;
             const statusColors={'מחכה לאישור':'#3b82f6','אושרה':'#10b981','ההזמנה מוכנה':'#10b981','סופק':'#ef4444','הוחזר חלקית':'#f97316','הוחזר':'#f59e0b','נדחתה':'#64748b'};
             const col=statusColors[o.status]||'#64748b';
-            const typeLabel=isMiddle?'⏳ פעיל':isStart&&isEnd?'↕️ יוצא+חוזר':isStart?'📤 יוצא':'📥 חוזר';
-            const timeStr=isMiddle?'':(isStart?`${o.startTime||''}`:'')+( isStart&&isEnd?' – ':'')+( isEnd?`${o.endTime||''}` :'');
+            const isBorrowedOut=['סופק','הוחזר חלקית'].includes(o.status);
+            let typeLabel=isMiddle?'⏳ פעיל':isStart&&isEnd?'↕️ יוצא+חוזר':isStart?'📤 יוצא':'📥 חוזר';
+            let timeStr=isMiddle?'':(isStart?`${o.startTime||''}`:'')+( isStart&&isEnd?' – ':'')+( isEnd?`${o.endTime||''}` :'');
+            if(isBorrowedOut){
+              if(isMiddle){
+                typeLabel='📦 בחוץ';
+                timeStr=`עד ${fmt(effectiveEndDate)} ${o.endTime||''}`.trim();
+              } else if(isStart&&isEnd){
+                typeLabel='📦 בחוץ';
+                timeStr=`${o.startTime||''} – ${o.endTime||''}`;
+              } else if(isStart){
+                typeLabel='📦 בחוץ';
+                timeStr=`מ־${o.startTime||'—'}`;
+              } else if(isEnd){
+                typeLabel='📥 חזרה מתוכננת';
+                timeStr=`${o.endTime||''}`;
+              }
+            }
             return h('div',{
               style:{display:'flex',alignItems:'flex-start',gap:'10px',padding:'10px 12px',background:'var(--bg3)',borderRadius:'8px',borderRight:`3px solid ${col}`,cursor:'pointer'},
               onclick:()=>openLoanDetail(o)
@@ -6396,7 +6564,7 @@ function openLoanDetail(o){
       onclick:e=>{if(e.target===overlay){}}
     });
     const bcInpEl=h('input',{placeholder:'סרוק ברקוד — או הקלד 2+ תווים לחיפוש מהיר במלאי',style:{flex:1}});
-    const bcSuggestEl=h('div',{style:{display:'none',marginTop:'6px',maxHeight:'240px',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg2)',zIndex:5}});
+    const bcSuggestEl=h('div',{style:{display:'none',marginTop:'6px',maxHeight:'min(340px,42vh)',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg2)',zIndex:5}});
     const hideBcSuggest=()=>{bcSuggestEl.innerHTML='';bcSuggestEl.style.display='none';};
     const invMatchesLoanSearch=(i,q)=>{
       const norm=(s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,'');
@@ -6461,7 +6629,7 @@ function openLoanDetail(o){
       addBarcode(v);
       setTimeout(()=>bcInpEl.focus(),30);
     });
-    const modal=h('div',{class:'modal modal-lg'},
+    const modal=h('div',{class:'modal modal-lg modal-loan-prep'},
       h('h2',{},
         o.status==='לא נלקחה'?`הזמנה לא נלקחה — #${o.orderNum||'—'}`:
         o.status==='הוחזר'?`הזמנה שהוחזרה — #${o.orderNum||'—'}`:
@@ -6726,7 +6894,7 @@ function openLoanDetail(o){
         h('summary',{style:{cursor:'pointer',fontSize:'12px',fontWeight:'700',color:'var(--text2)'}},'🔍 חיפוש פנימי'),
         h('div',{style:{marginTop:'8px'}},listFilterInp)
       ),
-      h('div',{style:{marginTop:'8px',maxHeight:'38vh',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px 10px',background:'rgba(255,255,255,0.01)'}},
+      h('div',{style:{marginTop:'8px',maxHeight:'min(520px,58vh)',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px 10px',background:'rgba(255,255,255,0.01)'}},
         renderList(),
         listEl
       ),
@@ -7851,7 +8019,41 @@ function renderItemModal(item){
         itemOrders.length>30?h('div',{style:{fontSize:'11px',color:'var(--text3)',textAlign:'center',marginTop:'4px'}},`מוצגות 30 מתוך ${itemOrders.length}`):h('span',{})
       );
     })()]:[] ),
-    // ── תמונת פריט ──
+    ...(item.id?[(()=>{
+      const raw=loadItemFieldHistory()[item.id]||[];
+      const hist=[...raw].reverse().slice(0,35);
+      const fmtCh=(ch)=>{
+        const parts=[];
+        for(const [k,v] of Object.entries(ch||{})){
+          const lab=ITEM_FIELD_LABELS_HE[k]||k;
+          parts.push(`${lab}: «${v.from}» ← «${v.to}»`);
+        }
+        return parts.join(' · ');
+      };
+      return h('div',{style:{marginBottom:'8px',borderTop:'1px solid var(--border)',paddingTop:'12px'}},
+        h('div',{style:{fontWeight:'700',fontSize:'13px',marginBottom:'8px'}},'📝 היסטוריית שינויי שדות'),
+        h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'8px',lineHeight:1.45}},'נרשם אוטומטית כשמנהל שומר עריכת פריט (לא כולל היסטוריית השאלות).'),
+        hist.length?h('div',{style:{maxHeight:'200px',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px'}},
+          h('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:'11px'}},
+            h('thead',{},h('tr',{style:{background:'var(--bg3)'}},
+              h('th',{style:{padding:'6px 8px',textAlign:'right'}},'מתי'),
+              h('th',{style:{padding:'6px 8px',textAlign:'right'}},'מי'),
+              h('th',{style:{padding:'6px 8px',textAlign:'right'}},'שינויים')
+            )),
+            h('tbody',{},...hist.map(en=>{
+              const when=new Date(en.ts).toLocaleString('he-IL');
+              const who=en.userName||en.userId||'—';
+              return h('tr',{style:{borderTop:'1px solid var(--border)',verticalAlign:'top'}},
+                h('td',{style:{padding:'6px 8px',whiteSpace:'nowrap',color:'var(--text3)'}},when),
+                h('td',{style:{padding:'6px 8px',fontWeight:'600'}},who),
+                h('td',{style:{padding:'6px 8px',lineHeight:1.45}},fmtCh(en.changes))
+              );
+            }))
+          )
+        ):h('div',{style:{fontSize:'12px',color:'var(--text3)',padding:'10px',border:'1px dashed var(--border)',borderRadius:'8px'}},'אין עדיין שינויים מתועדים לפריט זה.'),
+        hist.length>=35?h('div',{style:{fontSize:'10px',color:'var(--text3)',marginTop:'4px'}},`מוצגות 35 רישומים אחרונים (במכשיר נשמרות עד ~100)`):h('span',{})
+      );
+    })()]:[] ),
     h('div',{class:'modal-footer'},
       h('button',{class:'btn btn-secondary',onclick:closeModal},'סגור'),
       ...(item.id?[h('button',{class:'btn btn-secondary',style:{color:'var(--warning)',borderColor:'var(--warning)'},onclick:()=>{
@@ -7876,8 +8078,11 @@ function renderItemModal(item){
           const cRow=findInventoryJournalBarcodeConflict(inv2,form.barcode,wantJ,form.id||null);
           if(cRow){alertInventoryJournalBarcodeConflict(cRow,journals);return;}
           const exists=inv2.find(i=>i.id===form.id);
-          if(exists) inv2=inv2.map(i=>i.id===form.id?{...form}:i);
-          else inv2.push({...form,id:form.barcode||genId()});
+          const nextRow={...form,loanable:form.loanable};
+          if(exists){
+            recordItemFieldEdits(item.id,originalForm,nextRow,{userId:state.user?.id,userName:state.user?.name||''});
+            inv2=inv2.map(i=>i.id===form.id?nextRow:i);
+          } else inv2.push({...form,id:form.barcode||genId()});
         }
         setState({inventory:inv2,modal:null});save(SK.inventory,inv2);
       }},`שמור${!item.id&&batch>1?` (${batch})`:''}`),
@@ -8010,10 +8215,32 @@ function renderStockCount(){
     newSessionEl.appendChild(newNameInp);
     newSessionEl.appendChild(newBtn);
 
+    const exportAllSessionsCsv=()=>{
+      const hist=loadHistory();
+      if(!hist.length){alert('אין ספירות לייצוא');return;}
+      const rows=[['מזהה_ספירה','שם_ספירה','תאריך_פתיחה','ברקוד','שם_פריט','יומן','נספר','תאריך_ספירה','שעה','הערה','כפילויות_סריקה']];
+      for(const s of hist){
+        const counts=s.counts||{};
+        const dup=s.duplicates||{};
+        for(const it of inventory){
+          const c=counts[it.id];
+          const jName=journals.find(j=>j.id===it.journalId)?.name||'';
+          rows.push([s.id,s.name,s.date||'',it.barcode,it.name,jName,c?'כן':'לא',c?.date||'',c?.time||'',(c?.note||'').replace(/"/g,''),dup[it.id]||'']);
+        }
+      }
+      const csv=rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
+      a.download=`כל_הספירות_${today()}.csv`;
+      a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);
+    };
+
     return h('div',{},
       h('div',{class:'page-header flex items-center justify-between'},
         h('div',{},h('h1',{},'ספירת מלאי'),h('p',{style:{fontSize:'12px',color:'var(--text3)'}},`${history.length} ספירות`)),
-        h('button',{class:'btn btn-primary',onclick:()=>{
+        h('div',{class:'flex gap-2',style:{flexWrap:'wrap'}},
+          h('button',{class:'btn btn-secondary',type:'button',onclick:exportAllSessionsCsv},'📥 ייצא כל הספירות (CSV)'),
+          h('button',{class:'btn btn-primary',onclick:()=>{
           const nameInpEl=document.getElementById('_newScName');
           const name=nameInpEl?nameInpEl.value.trim():`ספירת מלאי ${new Date().getFullYear()}`;
           if(!name) return;
@@ -8022,6 +8249,7 @@ function renderStockCount(){
           const h2=[...loadHistory(),newSession];saveHistory(h2);
           activeSessionId=newSession.id;setActive(newSession.id);view='count';render2();
         }},'+ ספירה חדשה')
+        )
       ),
       storageWarning,
       h('div',{class:'card mb-4'},
@@ -8272,6 +8500,136 @@ function renderStockCount(){
   };
   render2();
   return rootEl;
+}
+
+function renderJournalInventoryProbe(){
+  const {inventory,journals,user}=state;
+  const users=state.users||[];
+  if(user?.role!=='admin')return h('div',{class:'page-header'},h('h1',{},'אין הרשאה'));
+  const camJid=getCamerasJournalId();
+  const jLabel=journals.find(j=>String(j.id)===String(camJid))?.name||'מצלמות';
+  const startYmd=state.cameraAvailWindowStart||today();
+  const startD=parseYMDLocal(startYmd);
+  if(!startD)return h('div',{class:'page-header'},h('h1',{},'תאריך התחלה לא תקין'));
+  const endD=new Date(startD.getFullYear(),startD.getMonth(),startD.getDate()+13);
+  const endYmd=localDateISO(endD);
+  const w0=new Date(startD);w0.setHours(0,0,0,0);
+  const w1=new Date(endD);w1.setHours(23,59,59,999);
+  const win0=w0.getTime(), win1=w1.getTime();
+
+  const cameras=inventory.filter(i=>String(i.journalId)===String(camJid))
+    .sort((a,b)=>String(a.barcode||'').localeCompare(String(b.barcode||'')));
+
+  const exportCsv=()=>{
+    const rows=[['ברקוד','שם','סוג_שורה','מתחיל','מסתיים','פרטים','סטטוס_הזמנה']];
+    for(const it of cameras){
+      const ok=!!it.loanable&&it.status==='תקין';
+      if(!ok){
+        rows.push([it.barcode||'',it.name||'','לא_פעיל_בלוח','','',`${it.status||'—'} · להשאלה:${it.loanable?'כן':'לא'}`,'']);
+        continue;
+      }
+      const res=getReservationsForItemInDateRange(it.id,startYmd,endYmd);
+      for(const o of res){
+        const iv=orderIntervalMs(o);
+        if(!iv) continue;
+        const cs=Math.max(iv.start,win0), ce=Math.min(iv.end,win1);
+        if(ce<=cs) continue;
+        const u=users.find(x=>String(x.id)===String(o.userId));
+        const det=`#${o.orderNum||'—'} ${u?.name||getUserName(o.userId)||''}${(o.purpose||'').trim()?' · '+String(o.purpose).replace(/"/g,''):''}`.trim();
+        rows.push([it.barcode||'',it.name||'','תפוס',
+          new Date(cs).toLocaleString('he-IL'),new Date(ce).toLocaleString('he-IL'),
+          det,o.status||'']);
+      }
+      const busyRaw=res.map(o=>orderIntervalMs(o)).filter(Boolean).map(iv=>({
+        start:Math.max(iv.start,win0),end:Math.min(iv.end,win1)
+      })).filter(iv=>iv.end>iv.start);
+      const merged=mergeBusyIntervalsMs(busyRaw);
+      const free=freeIntervalsInWindow(win0,win1,merged);
+      for(const f of free){
+        rows.push([it.barcode||'',it.name||'','פנוי',
+          new Date(f.start).toLocaleString('he-IL'),new Date(f.end).toLocaleString('he-IL'),'','']);
+      }
+    }
+    const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
+    a.download=`מצלמות_14_ימים_${startYmd}.csv`;
+    a.style.display='none';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  };
+
+  const cards=cameras.map(it=>{
+    const ok=!!it.loanable&&it.status==='תקין';
+    if(!ok){
+      return h('div',{class:'card',style:{marginBottom:'12px',opacity:0.92}},
+        h('div',{style:{fontWeight:'800',fontSize:'15px',marginBottom:'6px'}},it.name||'—',' ',h('code',{style:{fontSize:'12px'}},it.barcode||'')),
+        h('div',{style:{fontSize:'12px',color:'var(--warning)'}},`לא מוצגת בלוח זמינות — ${it.status||'—'} · ניתן להשאלה: ${it.loanable?'כן':'לא'}`)
+      );
+    }
+    const res=getReservationsForItemInDateRange(it.id,startYmd,endYmd);
+    const busyRaw=res.map(o=>orderIntervalMs(o)).filter(Boolean).map(iv=>({
+      start:Math.max(iv.start,win0),end:Math.min(iv.end,win1)
+    })).filter(iv=>iv.end>iv.start);
+    const merged=mergeBusyIntervalsMs(busyRaw);
+    const free=freeIntervalsInWindow(win0,win1,merged);
+
+    return h('div',{class:'card',style:{marginBottom:'14px'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'12px',flexWrap:'wrap'}},
+        h('div',{},
+          h('div',{style:{fontWeight:'800',fontSize:'16px'}},it.name||'—'),
+          h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px'}},
+            'ברקוד ',h('code',{},it.barcode||'—'),it.location?` · ${it.location}`:'')
+        ),
+        h('div',{style:{fontSize:'11px',color:'var(--text3)'}},`${res.length} הזמנות בחלון`)
+      ),
+      h('div',{style:{marginTop:'12px'}},
+        h('div',{style:{fontWeight:'700',fontSize:'13px',marginBottom:'8px',color:'var(--danger)'}},'תפוס — הזמנות (לחיצה לפרטים)'),
+        res.length?h('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}},
+          ...res.map(o=>{
+            const u=users.find(x=>String(x.id)===String(o.userId));
+            return h('div',{
+              style:{fontSize:'12px',padding:'8px 10px',background:'rgba(239,68,68,0.08)',borderRadius:'8px',border:'1px solid rgba(239,68,68,0.25)',cursor:'pointer'},
+              onclick:()=>openLoanDetail(o)
+            },
+              h('div',{},
+                h('strong',{},`#${o.orderNum||'—'}`),' · ',fmt(o.startDate),' ',o.startTime||'',' — ',fmt(o.endDate),' ',o.endTime||' ',
+                orderBadge(o.status)
+              ),
+              h('div',{style:{marginTop:'4px',color:'var(--text2)'}},(u?.name||getUserName(o.userId)||'—'),String(o.purpose||'').trim()?` · ${o.purpose}`:'')
+            );
+          })
+        ):h('div',{style:{fontSize:'12px',color:'var(--success)'}},'אין הזמנות תופסות בטווח — כל החלון פנוי')
+      ),
+      h('div',{style:{marginTop:'14px'}},
+        h('div',{style:{fontWeight:'700',fontSize:'13px',marginBottom:'8px',color:'var(--success)'}},'פנוי — מועדים רציפים שאין בהם הזמנה'),
+        free.length?h('ul',{style:{margin:'0',paddingInlineStart:'20px',lineHeight:1.65,fontSize:'13px'}},
+          ...free.map(f=>h('li',{},fmtMsRangeHe(f.start,f.end)))
+        ):h('div',{style:{fontSize:'12px',color:'var(--text3)'}},'אין מקטע פנוי (כל הטווח מכוסה הזמנות)')
+      )
+    );
+  });
+
+  return h('div',{},
+    h('div',{class:'page-header'},
+      h('h1',{},'מצלמות — שיבוצים וזמינות'),
+      h('p',{style:{fontSize:'13px',color:'var(--text3)',lineHeight:1.55}},
+        `יומן «${jLabel}»: לכל מצלמה מופיעות כל ההזמנות ב־14 הימים מתאריך ההתחלה שבחרת, ומחושב מתי המצלמה `,h('strong',{},'פנויה ברצף'),' (בין הזמנה להזמנה).')
+    ),
+    h('div',{class:'card mb-4'},
+      h('div',{style:{display:'flex',flexWrap:'wrap',gap:'12px',alignItems:'flex-end'}},
+        h('div',{},
+          h('label',{style:{fontSize:'13px'}},'תאריך התחלה (14 ימים קדימה)'),
+          (()=>{const i=h('input',{type:'date',value:startYmd,style:{width:'100%',maxWidth:'200px'}});
+            i.addEventListener('change',e=>setState({cameraAvailWindowStart:e.target.value}));
+            return i;})()
+        ),
+        h('button',{class:'btn btn-secondary',type:'button',onclick:()=>setState({cameraAvailWindowStart:today()})},'היום'),
+        h('button',{class:'btn btn-primary',onclick:exportCsv},'📥 ייצא CSV')
+      ),
+      h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'10px'}},`טווח מוצג: ${fmt(startYmd)} — ${fmt(endYmd)} (כלול)`)
+    ),
+    cameras.length?h('div',{},...cards):h('div',{class:'alert alert-warning'},'אין פריטים ביומן המצלמות — ודאו שפריטים משויכים ליומן «מצלמות».')
+  );
 }
 
 // ============================================================
@@ -10684,10 +11042,28 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
       )
     ),
     h('div',{id:'settings_inventory',class:'card mb-4',style:{display:activeTab==='inventory'?'block':'none'}},
-      h('h2',{style:{fontSize:'15px',fontWeight:'700',marginBottom:'10px'}},'הגדרות מלאי'),
-      h('div',{style:{fontSize:'12px',color:'var(--text3)',lineHeight:1.6}},
-        'ספירות מלאי מנוהלות במסך "ניהול מלאי". כרגע אין כאן טוגלים נוספים. אם תרצי—אפשר להוסיף כאן כפתורי מנהל (למשל פתיחת ספירה חדשה/סגירת ספירה/ייצוא דוח).'
-      )
+      h('h2',{style:{fontSize:'15px',fontWeight:'700',marginBottom:'10px'}},'הגדרות מלאי ומראה'),
+      h('div',{class:'form-group'},
+        h('label',{},'מועד תזכורת גיבוי מלא (JSON) — אחרי כמה ימים להציג אזהרה למנהלים'),
+        (()=>{const i=h('input',{type:'number',min:'1',max:'90',value:String(cfg.backupReminderDays??7),style:{maxWidth:'120px'}});
+          i.addEventListener('change',e=>{cfg.backupReminderDays=Math.max(1,Math.min(90,parseInt(e.target.value,10)||7));});
+          return i;})()
+      ),
+      h('div',{class:'form-group'},
+        h('label',{},'ערכת נושא ממשק'),
+        (()=>{const s=h('select',{style:{maxWidth:'320px'}});
+          [['default','ברירת מחדל (כהה)'],['aurora','אורורה (צבעים ציאנים / סרגל מודגש)']].forEach(([v,l])=>s.appendChild(h('option',{value:v},l)));
+          s.value=cfg.uiTheme==='aurora'?'aurora':'default';
+          s.addEventListener('change',e=>{cfg.uiTheme=e.target.value==='aurora'?'aurora':'default';});
+          return s;})()
+      ),
+      h('button',{class:'btn btn-primary',style:{marginTop:'6px'},onclick:()=>{
+        setState({settings:cfg});save(SK.settings,cfg);
+        try{document.documentElement.setAttribute('data-ui',cfg.uiTheme==='aurora'?'aurora':'default');}catch(e){}
+        msgEl.innerHTML='<div class="alert alert-success">✓ נשמרו הגדרות מלאי/מראה</div>';setTimeout(()=>msgEl.innerHTML='',2600);
+      }},'💾 שמור'),
+      h('div',{style:{fontSize:'12px',color:'var(--text3)',lineHeight:1.6,marginTop:'14px'}},
+        'ספירות מלאי: מסך «ספירת מלאי». מצלמות ב־14 יום: תפריט «מצלמות — 14 יום».')
     ),
     h('div',{id:'settings_orders',class:'card mb-4',style:{display:activeTab==='orders'?'block':'none'}},
       h('h2',{style:{fontSize:'15px',fontWeight:'700',marginBottom:'10px'}},'הגדרות הזמנות'),
@@ -11123,7 +11499,13 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
     renderStorageWarning(),
     h('div',{class:'card mb-4'},
       h('h2',{style:{fontSize:'15px',fontWeight:'700',marginBottom:'8px'}},'גיבוי ושחזור נתונים'),
-      h('p',{class:'text-sm text-muted mb-3',style:{lineHeight:1.55}},EQS_PUBLIC_DEPLOY?'בגרסת פרסום: גיבוי/שחזור מקובץ — בלי משתמשים/סטודנטים (לא נשמרים בקובץ ולא נטענים). רק הזמנות, מלאי, יומנים והגדרות.':'ללא סנכרון ענן (טאב «☁️ סנכרון»): הנתונים נשמרים רק בדפדפן של המכשיר. עם סנכרון Supabase פעיל — כל המכשירים משתפים אותו מצב אוטומטית; עדיין מומלץ גיבוי JSON מדי פעם. גיבוי «הזמנות בלבד» לא כולל יומנים.'),
+      (()=>{
+        const inf=getBackupReminderBannerInfo();
+        return h('div',{style:{fontSize:'12px',color:'var(--text2)',marginBottom:'10px',lineHeight:1.55}},
+          h('strong',{},'תזכורת בממשק: '),
+          `נשמר מקומית לאחר לחיצה על «גבה הכל» בלבד. אחרון: ${inf.lastLabel}. סף ההתראה: כל ${inf.days} ימים (ניתן לשנות בטאב «מלאי» בהגדרות).`);
+      })(),
+      h('p',{class:'text-sm text-muted mb-3',style:{lineHeight:1.55}},EQS_PUBLIC_DEPLOY?'בגרסת פרסום: גיבוי/שחזור מקובץ — בלי משתמשים/סטודנטים (לא נשמרים בקובץ ולא נטענים). רק הזמנות, מלאי, יומנים והגדרות.':'ללא סנכרון ענן (טאב «☁️ סנכרון»): הנתונים נשמרים רק בדפדפן של המכשיר. עם סנכרון Supabase פעיל — כל המכשירים משתפים אותו מצב אוטומטית; עדיין מומלץ גיבוי JSON מדי פעם. גיבוי «הזמנות בלבד» לא כולל יומנים. ייצוא CSV לדוחות (הזמנות / מלאי / ספירות) זמין במסכים הרלוונטיים — קובץ Excel יכול לפתוח CSV עם BOM.'),
       h('div',{class:'flex gap-3',style:{flexWrap:'wrap'}},
         h('button',{class:'btn btn-primary',onclick:()=>{
           const backup={orders:state.orders,exportedAt:new Date().toISOString(),version:2};
@@ -11135,7 +11517,7 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
             ?{orders:state.orders,inventory:state.inventory,journals:state.journals,settings:state.settings,exportedAt:new Date().toISOString(),version:2,_publicExportNoUsers:true}
             :{orders:state.orders,inventory:state.inventory,users:state.users,journals:state.journals,settings:state.settings,exportedAt:new Date().toISOString(),version:2};
           const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
-          const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`גיבוי_מלא_${today()}.json`;a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+          const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`גיבוי_מלא_${today()}.json`;a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);markFullBackupDone();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
         }},'💾 גבה הכל'),
         h('button',{class:'btn btn-secondary',onclick:()=>{
           const inp=document.createElement('input');inp.type='file';inp.accept='.json';
