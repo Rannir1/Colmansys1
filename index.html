@@ -283,7 +283,8 @@ function eqsSyncInventoryFromEmbedIfNeeded(){
     var gen=String(EQS_EMBEDDED_INVENTORY_GEN);
     if((localStorage.getItem(key)||'')===gen)return;
     localStorage.setItem(key,gen);
-    save(SK.inventory,ALL_INVENTORY);
+    // Safety: do not overwrite existing browser inventory on app update.
+    // Inventory refresh must be done manually from admin tools/import.
   }catch(e){console.warn('eqsSyncInventoryFromEmbedIfNeeded',e);}
 }
 const load=(k,d)=>{
