@@ -8999,9 +8999,136 @@ function renderRemovedInventory(){
     w.document.write(html);w.document.close();
   };
 
+  const normalizeBarcode=v=>{
+    const t=String(v||'').trim();
+    return /^\d+$/.test(t)?t.padStart(6,'0'):t;
+  };
+  const parseCsvRows=text=>{
+    const out=[]; let row=[]; let cur=''; let q=false;
+    for(let i=0;i<text.length;i++){
+      const ch=text[i];
+      if(q){
+        if(ch==='"'){
+          if(text[i+1]==='"'){cur+='"';i++;} else q=false;
+        } else cur+=ch;
+      } else {
+        if(ch==='"') q=true;
+        else if(ch===','){row.push(cur);cur='';}
+        else if(ch==='\n'){row.push(cur);out.push(row);row=[];cur='';}
+        else if(ch!=='\r') cur+=ch;
+      }
+    }
+    if(cur.length||row.length){row.push(cur);out.push(row);}
+    return out.filter(r=>r.some(c=>String(c||'').trim()!==''));
+  };
+  const importSpecificRemovedFromReport=()=>{
+    const inp=document.createElement('input');
+    inp.type='file';
+    inp.accept='.csv,text/csv';
+    inp.onchange=()=>{
+      const f=inp.files&&inp.files[0];
+      if(!f) return;
+      const barcodeRaw=prompt('ברקודים להחזרה (מופרדים בפסיק). אפשר להשאיר ריק:','')||'';
+      const nameRaw=prompt('שם פריט מכיל (אופציונלי):','')||'';
+      const rowsRaw=prompt('מספרי שורות מהדוח (למשל 2,5,9). שורה 1 היא כותרות:','')||'';
+      const reader=new FileReader();
+      reader.onload=()=>{
+        try{
+          const txt=String(reader.result||'');
+          const table=parseCsvRows(txt);
+          if(table.length<2){alert('קובץ CSV ריק או לא תקין');return;}
+          const header=table[0].map(x=>String(x||'').trim());
+          const idx=(...names)=>names.map(n=>header.indexOf(n)).find(i=>i>=0);
+          const bcIdx=idx('Barcode','ברקוד');
+          const nameIdx=idx('Name','שם');
+          const typeIdx=idx('Type','סוג');
+          const supplierIdx=idx('Supplier','ספק');
+          const idIdx=idx('InternalId','מזהה');
+          if(bcIdx==null||bcIdx<0){alert('לא נמצאה עמודת ברקוד בקובץ');return;}
+
+          const bcSet=new Set(barcodeRaw.split(',').map(s=>normalizeBarcode(s)).filter(Boolean));
+          const rowSet=new Set(rowsRaw.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>Number.isFinite(n)&&n>=2));
+          const nameNeedle=String(nameRaw||'').trim();
+          const selected=[];
+          for(let i=1;i<table.length;i++){
+            const r=table[i];
+            const rowNum=i+1;
+            const bc=normalizeBarcode(r[bcIdx]);
+            const nm=String(r[nameIdx]||'').trim();
+            const matchBc=bcSet.size>0&&bcSet.has(bc);
+            const matchRow=rowSet.size>0&&rowSet.has(rowNum);
+            const matchName=!!nameNeedle&&nm.includes(nameNeedle);
+            if((bcSet.size||rowSet.size||nameNeedle)?(matchBc||matchRow||matchName):false){
+              selected.push({
+                barcode:bc,name:nm,type:String(r[typeIdx]||''),supplier:String(r[supplierIdx]||''),id:String(r[idIdx]||'')
+              });
+            }
+          }
+          if(!selected.length){alert('לא נמצאו פריטים תואמים לבחירה');return;}
+
+          const inv=[...(state.inventory||[])];
+          const removedNow=[...(state.removed||[])];
+          const invBc=new Set(inv.map(x=>normalizeBarcode(x.barcode)));
+          const removedByBc=new Map(removedNow.map(x=>[normalizeBarcode(x.barcode),x]));
+          const dryMode=confirm('מצב DRY RUN?\nלחץ אישור לתצוגה מקדימה בלבד (ללא ייבוא בפועל).\nלחץ ביטול כדי לבצע ייבוא.');
+          let willAdd=0,willAlready=0,willFromRemoved=0,willFromCsv=0;
+          const preview=[];
+          selected.forEach(s=>{
+            if(!s.barcode) return;
+            if(invBc.has(s.barcode)){willAlready++; if(preview.length<25)preview.push(`• ${s.barcode} | ${s.name} | כבר במלאי`); return;}
+            if(removedByBc.has(s.barcode)){willFromRemoved++; if(preview.length<25)preview.push(`• ${s.barcode} | ${s.name} | ישוחזר מ"רשימת הוסרו"`);}
+            else {willFromCsv++; if(preview.length<25)preview.push(`• ${s.barcode} | ${s.name} | ייבנה מהדוח`);}
+            willAdd++;
+          });
+          if(dryMode){
+            alert(
+              `תצוגה מקדימה (DRY RUN)\n`+
+              `יימוספו: ${willAdd}\n`+
+              `כבר קיימים: ${willAlready}\n`+
+              `ישוחזרו מ\"הוסרו\": ${willFromRemoved}\n`+
+              `ייבנו מהדוח: ${willFromCsv}\n\n`+
+              `${preview.length?('דוגמאות:\n'+preview.join('\n')):'אין פריטים לתצוגה'}`
+            );
+            return;
+          }
+          let added=0,already=0,fromRemoved=0,fromCsv=0;
+          const removedToDelete=new Set();
+          selected.forEach(s=>{
+            if(!s.barcode) return;
+            if(invBc.has(s.barcode)){already++;return;}
+            const fromR=removedByBc.get(s.barcode);
+            let item=null;
+            if(fromR){
+              const {removedAt,reason,removeReason,...restored}=fromR;
+              item={...restored,status:'תקין'};
+              removedToDelete.add(String(fromR.id));
+              fromRemoved++;
+            }else{
+              item={
+                id:s.id||genId(),barcode:s.barcode,name:s.name||'',type:s.type||'',manufacturer:'',
+                serial:'',price:0,invoiceNum:'',purchaseDate:'',supplier:s.supplier||'',location:'מחסן',
+                loanable:true,status:'תקין',notes:'',journalId:''
+              };
+              fromCsv++;
+            }
+            inv.push(item); invBc.add(s.barcode); added++;
+          });
+          const removed2=removedNow.filter(r=>!removedToDelete.has(String(r.id)));
+          setState({inventory:inv,removed:removed2});
+          save(SK.inventory,inv); save(SK.removed,removed2);
+          alert(`הייבוא הושלם.\nנוספו: ${added}\nכבר קיימים במלאי: ${already}\nשוחזרו מרשימת הוסרו: ${fromRemoved}\nנבנו מה-CSV בלבד: ${fromCsv}`);
+        }catch(err){alert('שגיאה בייבוא: '+(err&&err.message?err.message:err));}
+      };
+      reader.onerror=()=>alert('שגיאה בקריאת הקובץ');
+      reader.readAsText(f,'utf-8');
+    };
+    inp.click();
+  };
+
   const tools=h('div',{class:'flex gap-2',style:{flexWrap:'wrap',marginTop:'10px',alignItems:'center'}},
     h('button',{class:'btn btn-primary',onclick:exportRemoved},'📥 ייצא CSV'),
-    h('button',{class:'btn btn-secondary',onclick:printRemoved},'🖨 הדפס דוח')
+    h('button',{class:'btn btn-secondary',onclick:printRemoved},'🖨 הדפס דוח'),
+    h('button',{class:'btn btn-success',onclick:importSpecificRemovedFromReport},'↩️ ייבוא פריטים ספציפיים מדוח')
   );
 
   if(!removed.length){
