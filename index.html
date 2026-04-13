@@ -8973,10 +8973,12 @@ function renderRemovedInventory(){
   const exportRemoved=()=>{
     const rows=[...removed].reverse();
     const esc=(v)=>String(v==null?'':v).replace(/"/g,'""');
-    const lines=[['ברקוד','שם','סוג','יומן','תאריך הוצאה','סיבה','מזהה','יצרן','ספק','מיקום'].map(esc).join(','),...rows.map(item=>{
+    const lines=[['ברקוד','שם','סוג','יומן','תאריך הוצאה','סיבה','מזהה','יצרן','ספק','מיקום','מספר סידורי','תאריך רכישה','סטטוס','בר-השאלה','JSON_מלא_לשחזור'].map(esc).join(','),...rows.map(item=>{
       const jName=journals.find(j=>j.id===item.journalId)?.name||'';
       const reason=String(item.reason||item.removeReason||'').replace(/,/g,' ');
-      return [item.barcode,item.name,item.type||'',jName,item.removedAt||'',reason,item.id||'',item.manufacturer||'',item.supplier||'',item.location||''].map(esc).join(',');
+      let payload='';
+      try{payload=encodeURIComponent(JSON.stringify(item));}catch(_){}
+      return [item.barcode,item.name,item.type||'',jName,item.removedAt||'',reason,item.id||'',item.manufacturer||'',item.supplier||'',item.location||'',item.serial||'',item.purchaseDate||'',item.status||'',item.loanable===false?'0':'1',payload].map(esc).join(',');
     })];
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob(['\uFEFF'+lines.join('\n')],{type:'text/csv;charset=utf-8'}));
@@ -9028,9 +9030,6 @@ function renderRemovedInventory(){
     inp.onchange=()=>{
       const f=inp.files&&inp.files[0];
       if(!f) return;
-      const barcodeRaw=prompt('ברקודים להחזרה (מופרדים בפסיק). אפשר להשאיר ריק:','')||'';
-      const nameRaw=prompt('שם פריט מכיל (אופציונלי):','')||'';
-      const rowsRaw=prompt('מספרי שורות מהדוח (למשל 2,5,9). שורה 1 היא כותרות:','')||'';
       const reader=new FileReader();
       reader.onload=()=>{
         try{
@@ -9044,100 +9043,177 @@ function renderRemovedInventory(){
           const typeIdx=idx('Type','סוג');
           const supplierIdx=idx('Supplier','ספק');
           const idIdx=idx('InternalId','מזהה');
+          const payloadIdx=idx('JSON_מלא_לשחזור','PayloadJson','payload_json');
           if(bcIdx==null||bcIdx<0){alert('לא נמצאה עמודת ברקוד בקובץ');return;}
-
-          const bcSet=new Set(barcodeRaw.split(',').map(s=>normalizeBarcode(s)).filter(Boolean));
-          const rowSet=new Set(rowsRaw.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>Number.isFinite(n)&&n>=2));
-          const nameNeedle=String(nameRaw||'').trim();
-          const selected=[];
+          const rows=[];
           for(let i=1;i<table.length;i++){
             const r=table[i];
             const rowNum=i+1;
             const bc=normalizeBarcode(r[bcIdx]);
             const nm=String(r[nameIdx]||'').trim();
-            const matchBc=bcSet.size>0&&bcSet.has(bc);
-            const matchRow=rowSet.size>0&&rowSet.has(rowNum);
-            const matchName=!!nameNeedle&&nm.includes(nameNeedle);
-            if((bcSet.size||rowSet.size||nameNeedle)?(matchBc||matchRow||matchName):false){
-              selected.push({
-                barcode:bc,name:nm,type:String(r[typeIdx]||''),supplier:String(r[supplierIdx]||''),id:String(r[idIdx]||'')
-              });
-            }
+            if(!bc) continue;
+            rows.push({rowNum,barcode:bc,name:nm,type:String(r[typeIdx]||''),supplier:String(r[supplierIdx]||''),id:String(r[idIdx]||''),payload:String((payloadIdx!=null&&payloadIdx>=0)?(r[payloadIdx]||''):'')});
           }
-          if(!selected.length){alert('לא נמצאו פריטים תואמים לבחירה');return;}
+          if(!rows.length){alert('לא נמצאו פריטים תקינים בדוח');return;}
 
           const inv=[...(state.inventory||[])];
           const removedNow=[...(state.removed||[])];
           const invBc=new Set(inv.map(x=>normalizeBarcode(x.barcode)));
           const removedByBc=new Map(removedNow.map(x=>[normalizeBarcode(x.barcode),x]));
-          const plan=[];
-          let willAdd=0,willAlready=0,willFromRemoved=0,willFromCsv=0;
-          selected.forEach(s=>{
-            if(!s.barcode) return;
-            if(invBc.has(s.barcode)){
-              willAlready++;
-              plan.push({barcode:s.barcode,name:s.name,source:'כבר במלאי',action:'skip',item:null,removedId:null});
-              return;
-            }
-            const fromR=removedByBc.get(s.barcode);
-            if(fromR){
-              const {removedAt,reason,removeReason,...restored}=fromR;
-              const item={...restored,status:'תקין'};
-              willFromRemoved++; willAdd++;
-              plan.push({barcode:s.barcode,name:s.name,source:'שחזור מ"רשימת הוסרו"',action:'add',item,removedId:String(fromR.id||'')});
-              return;
-            }
-            const built={
-              id:s.id||genId(),barcode:s.barcode,name:s.name||'',type:s.type||'',manufacturer:'',
-              serial:'',price:0,invoiceNum:'',purchaseDate:'',supplier:s.supplier||'',location:'מחסן',
-              loanable:true,status:'תקין',notes:'',journalId:''
-            };
-            willFromCsv++; willAdd++;
-            plan.push({barcode:s.barcode,name:s.name,source:'בנוי מהדוח',action:'add',item:built,removedId:null});
-          });
+
+          const makePlan=(selectedRows)=>{
+            const plan=[];
+            let willAdd=0,willAlready=0,willFromRemoved=0,willFromCsv=0;
+            selectedRows.forEach(s=>{
+              if(!s.barcode) return;
+              if(invBc.has(s.barcode)){
+                willAlready++;
+                plan.push({barcode:s.barcode,name:s.name,source:'כבר במלאי',action:'skip',item:null,removedId:null});
+                return;
+              }
+              const fromR=removedByBc.get(s.barcode);
+              if(fromR){
+                const {removedAt,reason,removeReason,...restored}=fromR;
+                const item={...restored,status:'תקין'};
+                willFromRemoved++; willAdd++;
+                plan.push({barcode:s.barcode,name:s.name,source:'שחזור מ"רשימת הוסרו"',action:'add',item,removedId:String(fromR.id||'')});
+                return;
+              }
+              let built=null;
+              if(s.payload){
+                try{
+                  const raw=decodeURIComponent(String(s.payload));
+                  const obj=JSON.parse(raw);
+                  built={...obj,barcode:s.barcode,id:(obj&&obj.id)?obj.id:(s.id||genId())};
+                }catch(_){}
+              }
+              if(!built){
+                built={
+                  id:s.id||genId(),barcode:s.barcode,name:s.name||'',type:s.type||'',manufacturer:'',
+                  serial:'',price:0,invoiceNum:'',purchaseDate:'',supplier:s.supplier||'',location:'מחסן',
+                  loanable:true,status:'תקין',notes:'',journalId:''
+                };
+              }
+              if(!built.id) built.id=s.id||genId();
+              if(!built.barcode) built.barcode=s.barcode;
+              if(!built.name) built.name=s.name||'';
+              if(!built.type) built.type=s.type||'';
+              willFromCsv++; willAdd++;
+              plan.push({barcode:s.barcode,name:s.name,source:'בנוי מהדוח',action:'add',item:built,removedId:null});
+            });
+            return {plan,willAdd,willAlready,willFromRemoved,willFromCsv};
+          };
 
           const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const rowsHtml=plan.slice(0,200).map(p=>`<tr><td>${esc(p.barcode)}</td><td>${esc(p.name)}</td><td>${esc(p.source)}</td></tr>`).join('');
+          const selectedSet=new Set();
           const overlay=document.createElement('div');
           overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
           const box=document.createElement('div');
-          box.style.cssText='width:min(920px,96vw);max-height:88vh;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;';
+          box.style.cssText='width:min(980px,96vw);max-height:90vh;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;';
           box.innerHTML=`
-            <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:800">תצוגה מקדימה לפני ייבוא</div>
-            <div style="padding:12px 14px;font-size:13px;line-height:1.6">
-              יתווספו: <b>${willAdd}</b> | כבר במלאי: <b>${willAlready}</b> | שחזור מ"הוסרו": <b>${willFromRemoved}</b> | בנייה מהדוח: <b>${willFromCsv}</b>
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:800">איתור פריטים מדוח ההסרה</div>
+            <div style="padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input id="eqsImportSearch" type="text" placeholder="חיפוש לפי ברקוד או שם" style="min-width:260px;flex:1;max-width:420px">
+              <button id="eqsImportSelectAll" class="btn btn-secondary">בחר את כל המסוננים</button>
+              <button id="eqsImportClearSel" class="btn btn-secondary">נקה בחירה</button>
+              <span id="eqsImportSelInfo" style="font-size:12px;color:var(--text3)"></span>
             </div>
             <div style="padding:0 14px 12px 14px;overflow:auto">
               <table style="width:100%;border-collapse:collapse;font-size:12px">
-                <thead><tr><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ברקוד</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שם</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">מה יקרה</th></tr></thead>
-                <tbody>${rowsHtml||'<tr><td colspan="3" style="padding:8px">אין פריטים</td></tr>'}</tbody>
+                <thead><tr><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">בחירה</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שורה</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ברקוד</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שם</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ספק</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">סטטוס</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">פעולה מהירה</th></tr></thead>
+                <tbody id="eqsImportRows"></tbody>
               </table>
             </div>
             <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
               <button id="eqsImportCloseBtn" class="btn btn-secondary">סגור</button>
+              <button id="eqsImportPreviewBtn" class="btn btn-secondary">תצוגה מקדימה</button>
               <button id="eqsImportRunBtn" class="btn btn-success">ייבא סופית</button>
             </div>`;
           overlay.appendChild(box);
           document.body.appendChild(overlay);
+          const qEl=box.querySelector('#eqsImportSearch');
+          const rowsEl=box.querySelector('#eqsImportRows');
+          const infoEl=box.querySelector('#eqsImportSelInfo');
           const close=()=>{if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);};
+          const getFiltered=()=>{
+            const q=String(qEl.value||'').trim();
+            if(!q) return rows;
+            return rows.filter(r=>r.barcode.includes(q)||String(r.name||'').includes(q));
+          };
+          const renderRows=()=>{
+            const filtered=getFiltered();
+            rowsEl.innerHTML=filtered.slice(0,400).map(r=>{
+              const inInv=invBc.has(r.barcode);
+              const inRemoved=removedByBc.has(r.barcode);
+              const status=inInv?'כבר במלאי':(inRemoved?'קיים ברשימת הוסרו':'זמין מהדוח');
+              return `<tr>
+              <td style="padding:6px;border-bottom:1px solid var(--border)"><input type="checkbox" data-bc="${esc(r.barcode)}" ${selectedSet.has(r.barcode)?'checked':''} ${inInv?'disabled':''}></td>
+              <td style="padding:6px;border-bottom:1px solid var(--border)">${r.rowNum}</td>
+              <td style="padding:6px;border-bottom:1px solid var(--border)">${esc(r.barcode)}</td>
+              <td style="padding:6px;border-bottom:1px solid var(--border)">${esc(r.name)}</td>
+              <td style="padding:6px;border-bottom:1px solid var(--border)">${esc(r.supplier)}</td>
+              <td style="padding:6px;border-bottom:1px solid var(--border)">${status}</td>
+              <td style="padding:6px;border-bottom:1px solid var(--border)"><button class="btn btn-sm ${inInv?'btn-secondary':'btn-success'}" data-import-bc="${esc(r.barcode)}" ${inInv?'disabled':''}>ייבא עכשיו</button></td>
+            </tr>`;}).join('') || '<tr><td colspan="7" style="padding:8px">לא נמצאו תוצאות</td></tr>';
+            infoEl.textContent=`נבחרו: ${selectedSet.size} | מוצגים: ${Math.min(filtered.length,400)} מתוך ${filtered.length}`;
+            rowsEl.querySelectorAll('input[type="checkbox"][data-bc]').forEach(cb=>{
+              cb.addEventListener('change',e=>{
+                const b=e.target.getAttribute('data-bc');
+                if(e.target.checked)selectedSet.add(b); else selectedSet.delete(b);
+                infoEl.textContent=`נבחרו: ${selectedSet.size} | מוצגים: ${Math.min(filtered.length,400)} מתוך ${filtered.length}`;
+              });
+            });
+            rowsEl.querySelectorAll('button[data-import-bc]').forEach(btn=>{
+              btn.addEventListener('click',e=>{
+                const b=e.currentTarget.getAttribute('data-import-bc');
+                const picked=rows.filter(r=>r.barcode===b);
+                const p=makePlan(picked);
+                if(!p||!p.plan||!p.plan.length){alert('לא נמצאה תוכנית ייבוא לפריט');return;}
+                const prev=p.plan[0];
+                if(!confirm(`לייבא עכשיו את ${b}?\n${prev.name||''}\nסטטוס: ${prev.source}`)) return;
+                executePlan(p,true);
+              });
+            });
+          };
+          qEl.addEventListener('input',renderRows);
+          box.querySelector('#eqsImportSelectAll').addEventListener('click',()=>{getFiltered().forEach(r=>selectedSet.add(r.barcode));renderRows();});
+          box.querySelector('#eqsImportClearSel').addEventListener('click',()=>{selectedSet.clear();renderRows();});
           box.querySelector('#eqsImportCloseBtn').addEventListener('click',close);
-          box.querySelector('#eqsImportRunBtn').addEventListener('click',()=>{
+
+          const showPreview=()=>{
+            const picked=rows.filter(r=>selectedSet.has(r.barcode));
+            if(!picked.length){alert('לא נבחרו פריטים להחזרה');return null;}
+            const p=makePlan(picked);
+            const preview=(p.plan.slice(0,25).map(x=>`• ${x.barcode} | ${x.name} | ${x.source}`).join('\n'))||'';
+            alert(`תצוגה מקדימה\nיימוספו: ${p.willAdd}\nכבר במלאי: ${p.willAlready}\nשחזור מ"הוסרו": ${p.willFromRemoved}\nבנויים מהדוח: ${p.willFromCsv}\n\n${preview}`);
+            return p;
+          };
+          const executePlan=(p,skipSecondConfirm)=>{
+            if(!p) return;
+            if(!skipSecondConfirm && !confirm('לבצע ייבוא סופי של הפריטים שנבחרו?')) return;
             let added=0,already=0,fromRemoved=0,fromCsv=0;
             const inv2=[...inv];
             const invBc2=new Set(inv2.map(x=>normalizeBarcode(x.barcode)));
             const removedToDelete=new Set();
-            plan.forEach(p=>{
-              if(p.action!=='add'){already++;return;}
-              if(invBc2.has(p.barcode)){already++;return;}
-              inv2.push(p.item); invBc2.add(p.barcode); added++;
-              if(String(p.source).indexOf('שחזור')===0){fromRemoved++; if(p.removedId)removedToDelete.add(p.removedId);} else {fromCsv++;}
+            p.plan.forEach(p2=>{
+              if(p2.action!=='add'){already++;return;}
+              if(invBc2.has(p2.barcode)){already++;return;}
+              inv2.push(p2.item); invBc2.add(p2.barcode); added++;
+              if(String(p2.source).indexOf('שחזור')===0){fromRemoved++; if(p2.removedId)removedToDelete.add(p2.removedId);} else {fromCsv++;}
             });
             const removed2=removedNow.filter(r=>!removedToDelete.has(String(r.id)));
             setState({inventory:inv2,removed:removed2});
             save(SK.inventory,inv2); save(SK.removed,removed2);
             close();
             alert(`הייבוא הושלם.\nנוספו: ${added}\nכבר קיימים במלאי: ${already}\nשוחזרו מרשימת הוסרו: ${fromRemoved}\nנבנו מה-CSV בלבד: ${fromCsv}`);
+          };
+          box.querySelector('#eqsImportPreviewBtn').addEventListener('click',showPreview);
+          box.querySelector('#eqsImportRunBtn').addEventListener('click',()=>{
+            const p=showPreview();
+            if(!p) return;
+            executePlan(p,false);
           });
+          renderRows();
         }catch(err){alert('שגיאה בייבוא: '+(err&&err.message?err.message:err));}
       };
       reader.onerror=()=>alert('שגיאה בקריאת הקובץ');
