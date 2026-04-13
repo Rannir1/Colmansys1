@@ -9052,8 +9052,25 @@ function renderRemovedInventory(){
             const bc=normalizeBarcode(r[bcIdx]);
             const nm=String(r[nameIdx]||'').trim();
             if(!bc) continue;
-            rows.push({rowNum,barcode:bc,name:nm,type:String(r[typeIdx]||''),supplier:String(r[supplierIdx]||''),id:String(r[idIdx]||''),payload:String((payloadIdx!=null&&payloadIdx>=0)?(r[payloadIdx]||''):'')});
+            rows.push({rowNum,barcode:bc,name:nm,type:String(r[typeIdx]||''),supplier:String(r[supplierIdx]||''),id:String(r[idIdx]||''),payload:String((payloadIdx!=null&&payloadIdx>=0)?(r[payloadIdx]||''):''),sourceLabel:'מהדוח'});
           }
+          // Also include items currently in the system removed list (not only the uploaded CSV snapshot).
+          const rowsBc=new Set(rows.map(x=>x.barcode));
+          (state.removed||[]).forEach(it=>{
+            const bc=normalizeBarcode(it&&it.barcode);
+            if(!bc||rowsBc.has(bc)) return;
+            rows.push({
+              rowNum:'מערכת',
+              barcode:bc,
+              name:String((it&&it.name)||'').trim(),
+              type:String((it&&it.type)||'').trim(),
+              supplier:String((it&&it.supplier)||'').trim(),
+              id:String((it&&it.id)||'').trim(),
+              payload:'',
+              sourceLabel:'מרשימת הוסרו במערכת'
+            });
+            rowsBc.add(bc);
+          });
           if(!rows.length){alert('לא נמצאו פריטים תקינים בדוח');return;}
 
           const inv=[...(state.inventory||[])];
@@ -9114,13 +9131,20 @@ function renderRemovedInventory(){
             <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:800">איתור פריטים מדוח ההסרה</div>
             <div style="padding:10px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <input id="eqsImportSearch" type="text" placeholder="חיפוש לפי ברקוד או שם" style="min-width:260px;flex:1;max-width:420px">
+              <select id="eqsImportSourceFilter" style="max-width:180px">
+                <option value="all">כל המקורות</option>
+                <option value="report">רק מהדוח</option>
+                <option value="system">רק מהמערכת</option>
+              </select>
+              <button id="eqsImportSearchBtn" class="btn btn-primary">חפש</button>
+              <button id="eqsImportClearSearchBtn" class="btn btn-secondary">נקה חיפוש</button>
               <button id="eqsImportSelectAll" class="btn btn-secondary">בחר את כל המסוננים</button>
               <button id="eqsImportClearSel" class="btn btn-secondary">נקה בחירה</button>
               <span id="eqsImportSelInfo" style="font-size:12px;color:var(--text3)"></span>
             </div>
             <div style="padding:0 14px 12px 14px;overflow:auto">
               <table style="width:100%;border-collapse:collapse;font-size:12px">
-                <thead><tr><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">בחירה</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שורה</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ברקוד</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שם</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ספק</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">סטטוס</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">פעולה מהירה</th></tr></thead>
+                <thead><tr><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">בחירה</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">מקור</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שורה</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ברקוד</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שם</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ספק</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">סטטוס</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">פעולה מהירה</th></tr></thead>
                 <tbody id="eqsImportRows"></tbody>
               </table>
             </div>
@@ -9132,13 +9156,20 @@ function renderRemovedInventory(){
           overlay.appendChild(box);
           document.body.appendChild(overlay);
           const qEl=box.querySelector('#eqsImportSearch');
+          const srcFilterEl=box.querySelector('#eqsImportSourceFilter');
           const rowsEl=box.querySelector('#eqsImportRows');
           const infoEl=box.querySelector('#eqsImportSelInfo');
           const close=()=>{if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);};
           const getFiltered=()=>{
             const q=String(qEl.value||'').trim();
-            if(!q) return rows;
-            return rows.filter(r=>r.barcode.includes(q)||String(r.name||'').includes(q));
+            const src=String(srcFilterEl.value||'all');
+            return rows.filter(r=>{
+              const matchText=!q||(r.barcode.includes(q)||String(r.name||'').includes(q));
+              if(!matchText) return false;
+              if(src==='report') return String(r.sourceLabel||'')==='מהדוח';
+              if(src==='system') return String(r.sourceLabel||'')==='מרשימת הוסרו במערכת';
+              return true;
+            });
           };
           const renderRows=()=>{
             const filtered=getFiltered();
@@ -9148,13 +9179,14 @@ function renderRemovedInventory(){
               const status=inInv?'כבר במלאי':(inRemoved?'קיים ברשימת הוסרו':'זמין מהדוח');
               return `<tr>
               <td style="padding:6px;border-bottom:1px solid var(--border)"><input type="checkbox" data-bc="${esc(r.barcode)}" ${selectedSet.has(r.barcode)?'checked':''} ${inInv?'disabled':''}></td>
+              <td style="padding:6px;border-bottom:1px solid var(--border)">${esc(r.sourceLabel||'')}</td>
               <td style="padding:6px;border-bottom:1px solid var(--border)">${r.rowNum}</td>
               <td style="padding:6px;border-bottom:1px solid var(--border)">${esc(r.barcode)}</td>
               <td style="padding:6px;border-bottom:1px solid var(--border)">${esc(r.name)}</td>
               <td style="padding:6px;border-bottom:1px solid var(--border)">${esc(r.supplier)}</td>
               <td style="padding:6px;border-bottom:1px solid var(--border)">${status}</td>
               <td style="padding:6px;border-bottom:1px solid var(--border)"><button class="btn btn-sm ${inInv?'btn-secondary':'btn-success'}" data-import-bc="${esc(r.barcode)}" ${inInv?'disabled':''}>ייבא עכשיו</button></td>
-            </tr>`;}).join('') || '<tr><td colspan="7" style="padding:8px">לא נמצאו תוצאות</td></tr>';
+            </tr>`;}).join('') || '<tr><td colspan="8" style="padding:8px">לא נמצאו תוצאות</td></tr>';
             infoEl.textContent=`נבחרו: ${selectedSet.size} | מוצגים: ${Math.min(filtered.length,400)} מתוך ${filtered.length}`;
             rowsEl.querySelectorAll('input[type="checkbox"][data-bc]').forEach(cb=>{
               cb.addEventListener('change',e=>{
@@ -9175,7 +9207,10 @@ function renderRemovedInventory(){
               });
             });
           };
-          qEl.addEventListener('input',renderRows);
+          qEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); renderRows(); }});
+          srcFilterEl.addEventListener('change',renderRows);
+          box.querySelector('#eqsImportSearchBtn').addEventListener('click',renderRows);
+          box.querySelector('#eqsImportClearSearchBtn').addEventListener('click',()=>{qEl.value='';srcFilterEl.value='all';renderRows();});
           box.querySelector('#eqsImportSelectAll').addEventListener('click',()=>{getFiltered().forEach(r=>selectedSet.add(r.barcode));renderRows();});
           box.querySelector('#eqsImportClearSel').addEventListener('click',()=>{selectedSet.clear();renderRows();});
           box.querySelector('#eqsImportCloseBtn').addEventListener('click',close);
