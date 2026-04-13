@@ -243,12 +243,25 @@ const save=(k,v)=>{
           return;
         }
         delete v2.loanPoliciesDataUrl;
-      }else if(Object.prototype.hasOwnProperty.call(v,'loanPoliciesDataUrl')){
+      }else if(Object.prototype.hasOwnProperty.call(v,'loanPoliciesDataUrl')&&v.loanPoliciesDataUrl!==undefined){
         try{(__eqsOrigRemoveItem||Storage.prototype.removeItem).call(localStorage,SK_LOAN_POLICIES_EMBED);}catch(e){}
         delete v2.loanPoliciesDataUrl;
       }
-      const body=JSON.stringify(v2);
-      (__eqsOrigSetItem||Storage.prototype.setItem).call(localStorage,k,body);
+      let body;
+      try{
+        body=JSON.stringify(v2);
+      }catch(jsErr){
+        console.warn('eqs settings JSON.stringify',jsErr);
+        alert('שמירת ההגדרות נכשלה — אובייקט ההגדרות לא תקין או גדול מדי. נסו להסיר קובץ נהלים שהועלה או לפנות מקום באחסון.');
+        return;
+      }
+      try{
+        (__eqsOrigSetItem||Storage.prototype.setItem).call(localStorage,k,body);
+      }catch(qErr){
+        console.warn('eqs settings setItem',qErr);
+        alert('שמירת ההגדרות נכשלה — כנראה אין מקום באחסון הדפדפן. מחקו נתונים ישנים או השתמשו בקישור לקובץ נהלים במקום העלאה.');
+        return;
+      }
       if(cloudAllowedKey(k)&&_cloudBatchDepth===0)cloudSchedulePush();
     }else{
       localStorage.setItem(k,JSON.stringify(v));
@@ -1049,10 +1062,30 @@ function setState(updates){
 }
 function setStateNoRender(updates){Object.assign(state, updates);}
 function saveSettingsCfgAndReload(cfg){
-  const base=load(SK.settings,{});
-  const out={...base,...cfg};
-  save(SK.settings,out);
-  setState({settings:load(SK.settings,{})});
+  try{
+    const base=load(SK.settings,{});
+    const out={...base,...cfg};
+    if(!Object.prototype.hasOwnProperty.call(cfg,'loanPoliciesDataUrl')) delete out.loanPoliciesDataUrl;
+    if(Object.prototype.hasOwnProperty.call(out,'loanPoliciesDataUrl')&&out.loanPoliciesDataUrl===undefined)delete out.loanPoliciesDataUrl;
+    save(SK.settings,out);
+    setState({settings:load(SK.settings,{})});
+  }catch(err){
+    console.error('saveSettingsCfgAndReload',err);
+    alert('שמירת הגדרות נכשלה: '+(err&&err.message?err.message:String(err)));
+  }
+}
+function eqsEnsureLoanPoliciesCfg(cfg){
+  try{
+    const cur=String(cfg.loanPoliciesDataUrl||'').trim();
+    if(cur.startsWith('data:'))return;
+    const full=load(SK.settings,{});
+    const fd=String(full.loanPoliciesDataUrl||'').trim();
+    if(fd.startsWith('data:')){
+      cfg.loanPoliciesDataUrl=fd;
+      const fn=String(full.loanPoliciesFileName||'').trim();
+      if(fn&&!String(cfg.loanPoliciesFileName||'').trim())cfg.loanPoliciesFileName=fn;
+    }
+  }catch(e){}
 }
 
 /** עדכון הזמנה אחת: patcher מקבל את הרשומה העדכנית מ-state.orders. מחזיר מערך חדש או null אם המזהה לא נמצא. */
@@ -2608,30 +2641,57 @@ function statusBadge(s){const m={'תקין':'badge-green','חסר':'badge-red','
 // RENDER
 // ============================================================
 function render(){
-  const root = document.getElementById('root');
-  root.innerHTML = '';
-  if(!state.user){
-    state.settings=load(SK.settings,state.settings||{});
-    root.appendChild(renderLogin());return;
-  }
-  state.settings=load(SK.settings,state.settings||{});
+  const root=document.getElementById('root');
+  if(!root){console.error('EQS: חסר אלמנט #root בדף');return;}
   try{
-    document.documentElement.setAttribute('data-ui',state.settings?.uiTheme==='aurora'?'aurora':'default');
-  }catch(e){}
-  // Critical storage warning (>90%)
-  try{
-    const pct=storageUsagePercentUsed();
-    if(pct>=90){
-      const warn=document.createElement('div');
-      warn.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:white;text-align:center;padding:10px 14px;font-size:12px;font-weight:700;line-height:1.45;white-space:pre-line;';
-      warn.textContent=`🚨 אחסון כמעט מלא (${pct}%)\n`+
-        `הדפדפן מגביל אחסון מקומי (בערך 5–10MB) — לא ניתן להגדיל אותו מתוך המערכת.\n`+
-        `מומלץ: גיבוי מההגדרות (גיבוי מלא) → מחיקת נתונים ישנים, או שימוש בדפדפן/מחשב אחר.`;
-      root.appendChild(warn);
+    root.innerHTML='';
+    if(!state.user){
+      state.settings=load(SK.settings,state.settings||{});
+      root.appendChild(renderLogin());
+      return;
     }
-  }catch(e){}
-  root.appendChild(renderApp());
-  if(state.modal) root.appendChild(state.modal());
+    state.settings=load(SK.settings,state.settings||{});
+    try{
+      document.documentElement.setAttribute('data-ui',state.settings?.uiTheme==='aurora'?'aurora':'default');
+    }catch(e){}
+    try{
+      const pct=storageUsagePercentUsed();
+      if(pct>=90){
+        const warn=document.createElement('div');
+        warn.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:white;text-align:center;padding:10px 14px;font-size:12px;font-weight:700;line-height:1.45;white-space:pre-line;';
+        warn.textContent=`🚨 אחסון כמעט מלא (${pct}%)\n`+
+          `הדפדפן מגביל אחסון מקומי (בערך 5–10MB) — לא ניתן להגדיל אותו מתוך המערכת.\n`+
+          `מומלץ: גיבוי מההגדרות (גיבוי מלא) → מחיקת נתונים ישנים, או שימוש בדפדפן/מחשב אחר.`;
+        root.appendChild(warn);
+      }
+    }catch(e){}
+    root.appendChild(renderApp());
+    if(state.modal)root.appendChild(state.modal());
+  }catch(err){
+    console.error('EQS render',err);
+    try{root.innerHTML='';}catch(_e){}
+    const box=document.createElement('div');
+    box.className='card';
+    box.setAttribute('dir','rtl');
+    box.style.cssText='max-width:560px;margin:24px auto;padding:20px';
+    const h2=document.createElement('h2');
+    h2.style.cssText='color:#dc2626;margin:0 0 12px;font-size:18px';
+    h2.textContent='שגיאה בהצגת הממשק';
+    const p1=document.createElement('p');
+    p1.style.cssText='font-size:14px;line-height:1.5;word-break:break-word';
+    p1.textContent=String(err&&err.message?err.message:err);
+    const p2=document.createElement('p');
+    p2.style.cssText='font-size:13px;color:var(--text3, #555);margin-top:12px;line-height:1.5';
+    p2.textContent='אם זה קרה אחרי «שמור הגדרות»: ייתכן שקובץ הנהלים גדול מדי או שהאחסון המקומי מלא. העדיפו קישור (URL) לקובץ על שרת במקום העלאה, או נקו נתוני אתר ישנים לדומיין זה.';
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.className='btn btn-primary';
+    btn.style.marginTop='16px';
+    btn.textContent='רענון הדף';
+    btn.onclick=()=>location.reload();
+    box.appendChild(h2);box.appendChild(p1);box.appendChild(p2);box.appendChild(btn);
+    root.appendChild(box);
+  }
 }
 
 // ============================================================
@@ -11188,6 +11248,7 @@ function renderWarehouseHours(){
 function renderSettings(){
   const {journals} = state;
   let cfg={...state.settings};
+  eqsEnsureLoanPoliciesCfg(cfg);
   cfg.emailEventRules=cfg.emailEventRules||{};
   cfg.emailTemplates=cfg.emailTemplates||{};
   let savedMsg=false;
@@ -11932,7 +11993,7 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
                   else{newState.users=data.users;save(SK.users,data.users);}
                 }
                 if(data.journals){newState.journals=data.journals;save(SK.journals,data.journals);}
-                if(data.settings){newState.settings=data.settings;save(SK.settings,data.settings);}
+                if(data.settings){save(SK.settings,data.settings);newState.settings=load(SK.settings,{});}
                 setState(newState);
                 const msg=`✅ שוחזר בהצלחה!\n${data.orders?data.orders.length+' הזמנות':''}`+(blockedUsers?'\n\n(בגרסת פרסום לא ייובאו משתמשים/סטודנטים מהקובץ.)':'');
                 alert(msg);
@@ -11969,9 +12030,22 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
 // START
 // ============================================================
 (async function eqsStart(){
-  await eqsBootstrapAuth();
-  render();
-  cloudSyncAfterLoad();
+  try{
+    await eqsBootstrapAuth();
+    render();
+    if(typeof cloudSyncAfterLoad==='function')cloudSyncAfterLoad();
+  }catch(err){
+    console.error('EQS start',err);
+    const r=document.getElementById('root');
+    if(r){
+      r.innerHTML='';
+      const p=document.createElement('p');
+      p.setAttribute('dir','rtl');
+      p.style.cssText='padding:20px;font-family:sans-serif';
+      p.textContent='טעינת המערכת נכשלה: '+(err&&err.message?err.message:String(err))+' — רעננו את הדף.';
+      r.appendChild(p);
+    }
+  }
 })();
 </script>
 </body>
