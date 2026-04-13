@@ -9070,53 +9070,74 @@ function renderRemovedInventory(){
           const removedNow=[...(state.removed||[])];
           const invBc=new Set(inv.map(x=>normalizeBarcode(x.barcode)));
           const removedByBc=new Map(removedNow.map(x=>[normalizeBarcode(x.barcode),x]));
-          const dryMode=confirm('מצב DRY RUN?\nלחץ אישור לתצוגה מקדימה בלבד (ללא ייבוא בפועל).\nלחץ ביטול כדי לבצע ייבוא.');
+          const plan=[];
           let willAdd=0,willAlready=0,willFromRemoved=0,willFromCsv=0;
-          const preview=[];
           selected.forEach(s=>{
             if(!s.barcode) return;
-            if(invBc.has(s.barcode)){willAlready++; if(preview.length<25)preview.push(`• ${s.barcode} | ${s.name} | כבר במלאי`); return;}
-            if(removedByBc.has(s.barcode)){willFromRemoved++; if(preview.length<25)preview.push(`• ${s.barcode} | ${s.name} | ישוחזר מ"רשימת הוסרו"`);}
-            else {willFromCsv++; if(preview.length<25)preview.push(`• ${s.barcode} | ${s.name} | ייבנה מהדוח`);}
-            willAdd++;
-          });
-          if(dryMode){
-            alert(
-              `תצוגה מקדימה (DRY RUN)\n`+
-              `יימוספו: ${willAdd}\n`+
-              `כבר קיימים: ${willAlready}\n`+
-              `ישוחזרו מ\"הוסרו\": ${willFromRemoved}\n`+
-              `ייבנו מהדוח: ${willFromCsv}\n\n`+
-              `${preview.length?('דוגמאות:\n'+preview.join('\n')):'אין פריטים לתצוגה'}`
-            );
-            return;
-          }
-          let added=0,already=0,fromRemoved=0,fromCsv=0;
-          const removedToDelete=new Set();
-          selected.forEach(s=>{
-            if(!s.barcode) return;
-            if(invBc.has(s.barcode)){already++;return;}
+            if(invBc.has(s.barcode)){
+              willAlready++;
+              plan.push({barcode:s.barcode,name:s.name,source:'כבר במלאי',action:'skip',item:null,removedId:null});
+              return;
+            }
             const fromR=removedByBc.get(s.barcode);
-            let item=null;
             if(fromR){
               const {removedAt,reason,removeReason,...restored}=fromR;
-              item={...restored,status:'תקין'};
-              removedToDelete.add(String(fromR.id));
-              fromRemoved++;
-            }else{
-              item={
-                id:s.id||genId(),barcode:s.barcode,name:s.name||'',type:s.type||'',manufacturer:'',
-                serial:'',price:0,invoiceNum:'',purchaseDate:'',supplier:s.supplier||'',location:'מחסן',
-                loanable:true,status:'תקין',notes:'',journalId:''
-              };
-              fromCsv++;
+              const item={...restored,status:'תקין'};
+              willFromRemoved++; willAdd++;
+              plan.push({barcode:s.barcode,name:s.name,source:'שחזור מ"רשימת הוסרו"',action:'add',item,removedId:String(fromR.id||'')});
+              return;
             }
-            inv.push(item); invBc.add(s.barcode); added++;
+            const built={
+              id:s.id||genId(),barcode:s.barcode,name:s.name||'',type:s.type||'',manufacturer:'',
+              serial:'',price:0,invoiceNum:'',purchaseDate:'',supplier:s.supplier||'',location:'מחסן',
+              loanable:true,status:'תקין',notes:'',journalId:''
+            };
+            willFromCsv++; willAdd++;
+            plan.push({barcode:s.barcode,name:s.name,source:'בנוי מהדוח',action:'add',item:built,removedId:null});
           });
-          const removed2=removedNow.filter(r=>!removedToDelete.has(String(r.id)));
-          setState({inventory:inv,removed:removed2});
-          save(SK.inventory,inv); save(SK.removed,removed2);
-          alert(`הייבוא הושלם.\nנוספו: ${added}\nכבר קיימים במלאי: ${already}\nשוחזרו מרשימת הוסרו: ${fromRemoved}\nנבנו מה-CSV בלבד: ${fromCsv}`);
+
+          const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const rowsHtml=plan.slice(0,200).map(p=>`<tr><td>${esc(p.barcode)}</td><td>${esc(p.name)}</td><td>${esc(p.source)}</td></tr>`).join('');
+          const overlay=document.createElement('div');
+          overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.56);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+          const box=document.createElement('div');
+          box.style.cssText='width:min(920px,96vw);max-height:88vh;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;';
+          box.innerHTML=`
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:800">תצוגה מקדימה לפני ייבוא</div>
+            <div style="padding:12px 14px;font-size:13px;line-height:1.6">
+              יתווספו: <b>${willAdd}</b> | כבר במלאי: <b>${willAlready}</b> | שחזור מ"הוסרו": <b>${willFromRemoved}</b> | בנייה מהדוח: <b>${willFromCsv}</b>
+            </div>
+            <div style="padding:0 14px 12px 14px;overflow:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:12px">
+                <thead><tr><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">ברקוד</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">שם</th><th style="text-align:right;border-bottom:1px solid var(--border);padding:6px">מה יקרה</th></tr></thead>
+                <tbody>${rowsHtml||'<tr><td colspan="3" style="padding:8px">אין פריטים</td></tr>'}</tbody>
+              </table>
+            </div>
+            <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end">
+              <button id="eqsImportCloseBtn" class="btn btn-secondary">סגור</button>
+              <button id="eqsImportRunBtn" class="btn btn-success">ייבא סופית</button>
+            </div>`;
+          overlay.appendChild(box);
+          document.body.appendChild(overlay);
+          const close=()=>{if(overlay&&overlay.parentNode)overlay.parentNode.removeChild(overlay);};
+          box.querySelector('#eqsImportCloseBtn').addEventListener('click',close);
+          box.querySelector('#eqsImportRunBtn').addEventListener('click',()=>{
+            let added=0,already=0,fromRemoved=0,fromCsv=0;
+            const inv2=[...inv];
+            const invBc2=new Set(inv2.map(x=>normalizeBarcode(x.barcode)));
+            const removedToDelete=new Set();
+            plan.forEach(p=>{
+              if(p.action!=='add'){already++;return;}
+              if(invBc2.has(p.barcode)){already++;return;}
+              inv2.push(p.item); invBc2.add(p.barcode); added++;
+              if(String(p.source).indexOf('שחזור')===0){fromRemoved++; if(p.removedId)removedToDelete.add(p.removedId);} else {fromCsv++;}
+            });
+            const removed2=removedNow.filter(r=>!removedToDelete.has(String(r.id)));
+            setState({inventory:inv2,removed:removed2});
+            save(SK.inventory,inv2); save(SK.removed,removed2);
+            close();
+            alert(`הייבוא הושלם.\nנוספו: ${added}\nכבר קיימים במלאי: ${already}\nשוחזרו מרשימת הוסרו: ${fromRemoved}\nנבנו מה-CSV בלבד: ${fromCsv}`);
+          });
         }catch(err){alert('שגיאה בייבוא: '+(err&&err.message?err.message:err));}
       };
       reader.onerror=()=>alert('שגיאה בקריאת הקובץ');
