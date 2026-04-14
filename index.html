@@ -2498,6 +2498,14 @@ function exportApprovedOrdersToIcs(fromDate,toDate){
 // ─────────────────────────────────────────────────────────
 const genBarcode=(inv)=>{const max=inv.reduce((m,i)=>Math.max(m,parseInt(i.barcode)||0),100000);return String(max+1).padStart(6,'0')};
 const today=()=>localDateISO(new Date());
+function nowPartsIL(){
+  const n=new Date();
+  return {hh:n.getHours(),mm:n.getMinutes()};
+}
+function nowTimeIL(){
+  const p=nowPartsIL();
+  return `${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`;
+}
 const fmt=(d)=>{if(!d)return'—';const p=d.split('-');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:d;};
 const BROADCAST_SESSION_DISMISS_PREFIX='eqs_bd_sess_';
 function broadcastSessionDismissKey(){return BROADCAST_SESSION_DISMISS_PREFIX+(state.user?.id||'guest');}
@@ -3651,15 +3659,15 @@ function confirmAction(msg, onYes){
 
 // Get current time rounded to next 30min
 function nowTimeRounded(){
-  const n=new Date();
-  let h=n.getHours(), m=n.getMinutes();
+  const n=nowPartsIL();
+  let h=n.hh, m=n.mm;
   if(m>0){m=m<=30?30:0;if(m===0)h++;}
   if(h>=24){h=23;m=30;}
   return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
 }
 function nowTimePlusHours(hrs){
-  const n=new Date();
-  let h=n.getHours(), m=n.getMinutes();
+  const n=nowPartsIL();
+  let h=n.hh, m=n.mm;
   if(m>0){m=m<=30?30:0;if(m===0)h++;}
   h+=hrs;
   if(h>=24)h=23;
@@ -3668,9 +3676,8 @@ function nowTimePlusHours(hrs){
 
 // Check if order times are in the past and warn
 function checkPastTimeAndProceed(startDate, startTime, endDate, endTime, onProceed, msgEl){
-  const now=new Date();
   const todayStr=today();
-  const currentTime=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+  const currentTime=nowTimeIL();
   // Block if start time already passed
   if(startDate<todayStr||(startDate===todayStr&&startTime<currentTime)){
     const msg=`<div class="alert alert-danger">⏰ שעת השאילה (${fmt(startDate)} ${startTime}) כבר עברה. יש לבחור שעה עתידית.</div>`;
@@ -3769,9 +3776,8 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
           const dArr=[...bulkPickDates.dates].sort();
           const busyN=dArr.filter(d=>{
             const t=getBulkTimes(d);
-            const now=new Date();
             const ts=today();
-            const ct=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            const ct=nowTimeIL();
             const past=d<ts||(d===ts&&String((t.startTime||'00:00'))<ct);
             return past||getConflicts(item.id,d,d,t.startTime,t.endTime,null).length>0;
           }).length;
@@ -3819,9 +3825,8 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
   };
 
   function isPastAt(d,t){
-    const n=new Date();
     const ts=today();
-    const ct=`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+    const ct=nowTimeIL();
     return d<ts||(d===ts&&String(t||'00:00')<ct);
   }
   const makeInput=(type,val,onchange,extra={})=>{
@@ -4520,23 +4525,46 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     const now=new Date();
     const todayStr=today();
     const currentTime=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-    const startPast=form.startDate<todayStr||(form.startDate===todayStr&&String(form.startTime||'00:00')<currentTime);
-    const endPast=form.endDate<todayStr||(form.endDate===todayStr&&String(form.endTime||'00:00')<=currentTime);
+    const toMinutesLocal=(raw)=>{
+      const s=String(raw||'').trim().toUpperCase();
+      if(!s) return null;
+      const m12=s.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/);
+      if(m12){
+        let hh=parseInt(m12[1],10), mm=parseInt(m12[2],10);
+        if(Number.isNaN(hh)||Number.isNaN(mm)||mm<0||mm>59) return null;
+        if(m12[3]==='AM'){ if(hh===12) hh=0; } else { if(hh!==12) hh+=12; }
+        if(hh<0||hh>23) return null;
+        return hh*60+mm;
+      }
+      const m24=s.match(/^(\d{1,2}):(\d{2})$/);
+      if(m24){
+        const hh=parseInt(m24[1],10), mm=parseInt(m24[2],10);
+        if(Number.isNaN(hh)||Number.isNaN(mm)||hh<0||hh>23||mm<0||mm>59) return null;
+        return hh*60+mm;
+      }
+      return null;
+    };
+    const sObj=parseYMDLocal(form.startDate||'');
+    const eObj=parseYMDLocal(form.endDate||'');
+    const tObj=parseYMDLocal(todayStr);
+    const sCmp=(sObj&&tObj)?(sObj.getTime()-tObj.getTime()):String(form.startDate||'').localeCompare(todayStr);
+    const eCmp=(eObj&&tObj)?(eObj.getTime()-tObj.getTime()):String(form.endDate||'').localeCompare(todayStr);
+    const nowMin=toMinutesLocal(currentTime);
+    const sMin=toMinutesLocal(form.startTime||'00:00');
+    const eMin=toMinutesLocal(form.endTime||'00:00');
+    const startPast=sCmp<0||(sCmp===0&&sMin!=null&&nowMin!=null&&sMin<nowMin);
+    const endPast=eCmp<0||(eCmp===0&&eMin!=null&&nowMin!=null&&eMin<=nowMin);
     const submitBtn=(()=>{const s=document.getElementById('_submitOrderBtn');return s&&s.closest?s.closest('button'):null;})();
-    if(startPast||endPast){
-      const msg=startPast
-        ? `⏰ שעת השאילה (${fmt(form.startDate)} ${form.startTime||'00:00'}) כבר עברה. יש לבחור שעה עתידית.`
-        : `⚠️ שעת ההחזרה (${fmt(form.endDate)} ${form.endTime||'00:00'}) כבר עברה. יש לבחור מועד עתידי.`;
-      conflictMsgEl.innerHTML=`<div class="alert alert-danger">${msg}</div>`;
-      if(submitBtn){submitBtn.disabled=true;submitBtn.style.opacity='0.45';submitBtn.style.cursor='not-allowed';}
-      updateWarehousePreview();
-      updateOrderBorrowReturnDayLines();
-      return;
-    }
     const c=checkConflict();
     if(c){
       const u2=users.find(u=>u.id===c[0].userId);
       conflictMsgEl.innerHTML=`<div class="alert alert-danger">⚠️ הפריט תפוס! (${u2?.name||'סטודנט'}: ${fmt(c[0].startDate)} ${c[0].startTime||''}–${c[0].endTime||''})</div>`;
+      if(submitBtn){submitBtn.disabled=true;submitBtn.style.opacity='0.45';submitBtn.style.cursor='not-allowed';}
+    } else if(startPast||endPast){
+      const msg=startPast
+        ? `⏰ שעת השאילה (${fmt(form.startDate)} ${form.startTime||'00:00'}) כבר עברה. יש לבחור שעה עתידית.`
+        : `⚠️ שעת ההחזרה (${fmt(form.endDate)} ${form.endTime||'00:00'}) כבר עברה. יש לבחור מועד עתידי.`;
+      conflictMsgEl.innerHTML=`<div class="alert alert-danger">${msg}</div>`;
       if(submitBtn){submitBtn.disabled=true;submitBtn.style.opacity='0.45';submitBtn.style.cursor='not-allowed';}
     } else {
       conflictMsgEl.innerHTML='';
@@ -4687,9 +4715,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     dates.forEach(d=>{
       const t=getPickedTimes(d);
       const c=getConflicts(form.itemId,d,d,t.startTime,t.endTime,null);
-      const now=new Date();
       const ts=today();
-      const ct=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      const ct=nowTimeIL();
       const past=d<ts||(d===ts&&String((t.startTime||'00:00'))<ct);
       const busy=past||c.length>0;
       const dow=new Date(d+'T12:00:00').getDay();
@@ -4858,8 +4885,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           const itemP=inventory.find(i=>i.id===form.itemId);
           const statusP=isAdmin?'אושרה':'מחכה לאישור';
           const todayStrP=today();
-          const nowP=new Date();
-          const currentTimeP=`${String(nowP.getHours()).padStart(2,'0')}:${String(nowP.getMinutes()).padStart(2,'0')}`;
+          const currentTimeP=nowTimeIL();
           const skippedBusy=[];const skippedPast=[];
           const newOrdersP=[];
           let numP=nextOrderNum();
