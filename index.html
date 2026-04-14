@@ -1851,7 +1851,7 @@ function getConflicts(itemId, startDate, endDate, startTime, endTime, excludeOrd
   if(reqStartMs==null||reqEndMs==null) return [];
   return state.orders.filter(o=>{
     if(excludeOrderId && o.id===excludeOrderId) return false;
-    if(o.status==='נדחתה'||o.status==='הוחזר'||o.status==='לא נלקחה') return false;
+    if(o.status==='נדחתה'||o.status==='נמחקה') return false;
     if(o.startDate>endDate||o.endDate<startDate) return false;
     const ordStartMs=toMs(o.startDate,o.startTime,0);
     const ordEndMs=toMs(o.endDate,o.endTime,23*60+59);
@@ -1871,7 +1871,7 @@ function getConflicts(itemId, startDate, endDate, startTime, endTime, excludeOrd
 /** הזמנות שתופסות פריט מלאי בטווח תאריכים (לפי תאריך שאילה/החזרה), למעט סטטוסים שלא נותנים שיבוץ */
 function getReservationsForItemInDateRange(itemId, fromYmd, toYmd){
   return state.orders.filter(o=>{
-    if(o.status==='נדחתה'||o.status==='הוחזר'||o.status==='לא נלקחה') return false;
+    if(o.status==='נדחתה'||o.status==='נמחקה') return false;
     if(o.startDate>toYmd||o.endDate<fromYmd) return false;
     return orderReservesInventoryId(o,itemId);
   }).sort((a,b)=>{
@@ -5586,6 +5586,7 @@ function renderEditOrderModal(order, prevModal){
 
   const conflictMsgEl=h('div',{});
   const checkConflict=()=>getConflicts(form.itemId,form.startDate,form.endDate,form.startTime,form.endTime,order.id);
+  let saveBtnEl=null;
 
   // Current item display badge (always visible above select)
   const currentItemBadge=h('div',{style:{
@@ -5638,6 +5639,7 @@ function renderEditOrderModal(order, prevModal){
       const u2=users.find(u=>u.id===c[0].userId);
       conflictMsgEl.innerHTML=`<div class="alert alert-danger">⚠️ הפריט תפוס! (${u2?.name||'סטודנט'}: ${fmt(c[0].startDate)} ${c[0].startTime||''}–${c[0].endTime||''})</div>`;
     } else conflictMsgEl.innerHTML='';
+    if(saveBtnEl) saveBtnEl.disabled=c.length>0;
   };
   const makeInput=(type,val,cb,extra={})=>{
     const i=h('input',{type,value:val,...extra});
@@ -5733,17 +5735,29 @@ function renderEditOrderModal(order, prevModal){
     ...(!isAdmin?[h('div',{class:'alert alert-info',style:{fontSize:'12px'}},'ℹ️ שינוי הזמנה יחזיר אותה לסטטוס "מחכה לאישור" מחדש')]:[]),
     h('div',{class:'modal-footer'},
       h('button',{class:'btn btn-secondary',onclick:()=>{if(prevModal){state.modal=prevModal;setState({});}else closeModal();}},'↩ חזור'),
-      h('button',{class:'btn btn-primary',onclick:()=>{
+      (()=>{
+        saveBtnEl=h('button',{class:'btn btn-primary',onclick:()=>{
         if(!form.itemId||!form.startDate){alert('נא למלא שדות חובה');return;}
         {
           const now=new Date();
           const todayStr=today();
           const currentTime=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-          if(form.startDate<todayStr||(form.startDate===todayStr&&String(form.startTime||'00:00')<currentTime)){
+          const startMin=toMinutesLocal(form.startTime||'00:00');
+          const nowMin=toMinutesLocal(currentTime);
+          const endMin=toMinutesLocal(form.endTime||'00:00');
+          const startInPast=(
+            form.startDate<todayStr||
+            (form.startDate===todayStr&&startMin!=null&&nowMin!=null&&startMin<nowMin)
+          );
+          const endInPast=(
+            form.endDate<todayStr||
+            (form.endDate===todayStr&&endMin!=null&&nowMin!=null&&endMin<=nowMin)
+          );
+          if(!isActiveLoan&&startInPast){
             alert('לא ניתן לשמור עריכה כשהשאילה במועד עבר. יש לבחור תאריך/שעה עתידיים.');
             return;
           }
-          if(form.endDate<todayStr||(form.endDate===todayStr&&String(form.endTime||'00:00')<=currentTime)){
+          if(endInPast){
             alert('לא ניתן לשמור עריכה כשההחזרה במועד עבר. יש לבחור תאריך/שעה עתידיים.');
             return;
           }
@@ -5827,7 +5841,9 @@ function renderEditOrderModal(order, prevModal){
         }else setState({orders,modal:null});
         // מייל/התראה: ממתין לאישור — רק בלחיצה על «אשר הזמנה» (והשורות נשמרות ב־_approveEmailExtraLines).
         // הזמנה מאושרת שנערכה — רק אחרי «אשר שליחת עדכון» בחלון פרטי ההזמנה.
-      }},'שמור שינויים'),
+      }},'שמור שינויים');
+        return saveBtnEl;
+      })(),
       h('button',{class:'btn btn-secondary',style:{color:'var(--warning)',borderColor:'var(--warning)'},onclick:()=>{
         confirmAction('לבטל את כל השינויים ולחזור למצב המקורי?',()=>{
           state.modal=()=>renderEditOrderModal(order);setState({});
