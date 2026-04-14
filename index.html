@@ -5773,6 +5773,11 @@ function renderEditOrderModal(order, prevModal){
   };
   const makeInput=(type,val,cb,extra={})=>{
     const i=h('input',{type,value:val,...extra});
+    if(type==='date'){
+      i.setAttribute('lang','he-IL');
+      i.style.direction='rtl';
+      i.style.textAlign='right';
+    }
     i.addEventListener('change',e=>{cb(e.target.value);updateConflict();});
     if(type!=='date') i.addEventListener('input',e=>{cb(e.target.value);updateConflict();});
     return i;
