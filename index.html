@@ -504,8 +504,28 @@ function cloudMergeOrdersPreferLocal(remoteVal){
   }
   for(const o of localArr){
     if(!o||!o.id) continue;
-    // Keep local version on id collision to avoid losing latest local edits.
-    byId.set(String(o.id),o);
+    const id=String(o.id);
+    const remote=byId.get(id);
+    if(!remote){
+      byId.set(id,o);
+      continue;
+    }
+    const local=o;
+    const remoteStatus=String(remote.status||'');
+    const localStatus=String(local.status||'');
+    const remoteStatusAdvanced=
+      localStatus==='מחכה לאישור' &&
+      remoteStatus &&
+      remoteStatus!==localStatus;
+    const remoteCancelDecision=
+      !!remote.cancelRequestStatus &&
+      String(remote.cancelRequestStatus||'')!==String(local.cancelRequestStatus||'');
+    if(remoteStatusAdvanced||remoteCancelDecision){
+      byId.set(id,remote);
+      continue;
+    }
+    // Default: keep local version on id collision to avoid losing latest local edits.
+    byId.set(id,local);
   }
   return Array.from(byId.values());
 }
@@ -10396,6 +10416,7 @@ function renderMyReports(){
 
   const tableEl=h('div',{class:'table-wrap',style:{marginTop:'12px'}});
   const countEl=h('span',{style:{fontSize:'13px',color:'var(--text3)'}});
+  const syncMsgEl=h('div',{style:{fontSize:'12px',marginTop:'8px'}});
 
   const refresh=()=>{
     const f=getFiltered();
@@ -10498,8 +10519,30 @@ function renderMyReports(){
   return h('div',{},
     h('div',{class:'page-header flex items-center justify-between',style:{flexWrap:'wrap',gap:'12px'}},
       h('div',{},h('h1',{},'ההזמנות שלי'),h('p',{},'סינון וצפייה בכל ההזמנות שלי')),
-      h('button',{class:'btn btn-primary',onclick:()=>openOrderModal(null,null,today())},'+ הזמנה חדשה')
+      h('div',{class:'flex gap-2',style:{flexWrap:'wrap'}},
+        h('button',{class:'btn btn-secondary',onclick:async()=>{
+          syncMsgEl.textContent='מרענן סטטוסים...';
+          syncMsgEl.style.color='var(--text3)';
+          try{
+            if(typeof cloudSyncEnabled==='function'&&cloudSyncEnabled()&&typeof cloudPullNow==='function'){
+              await cloudPullNow({force:true});
+            }
+            const fresh=load(SK.orders,[]);
+            setState({orders:fresh});
+            syncMsgEl.textContent='✓ הסטטוסים עודכנו';
+            syncMsgEl.style.color='var(--success)';
+          }catch(e){
+            const fresh=load(SK.orders,[]);
+            setState({orders:fresh});
+            syncMsgEl.textContent='⚠️ רוענן מקומית בלבד (בדקו חיבור/סנכרון ענן)';
+            syncMsgEl.style.color='var(--warning)';
+          }
+          setTimeout(()=>{syncMsgEl.textContent='';},2500);
+        }},'🔄 רענון'),
+        h('button',{class:'btn btn-primary',onclick:()=>openOrderModal(null,null,today())},'+ הזמנה חדשה')
+      )
     ),
+    syncMsgEl,
     h('div',{class:'stats-grid'},
       h('div',{class:'stat-card'},h('div',{class:'lbl'},'סה"כ הזמנות'),h('div',{class:'val'},total)),
       h('div',{class:'stat-card'},h('div',{class:'lbl'},'פעילות כרגע'),h('div',{class:'val',style:{color:'var(--success)'}},active)),
