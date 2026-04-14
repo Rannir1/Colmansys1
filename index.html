@@ -5594,6 +5594,13 @@ function renderEditOrderModal(order, prevModal){
     if(endMin==null||nowMin==null) return false;
     return endMin<nowMin;
   };
+  const isEndDateBeforeToday=(d)=>{
+    const endDateObj=parseYMDLocal(String(d||'').trim());
+    const nowDateObj=parseYMDLocal(nowYMD);
+    if(endDateObj&&nowDateObj) return endDateObj.getTime()<nowDateObj.getTime();
+    const dd=String(d||'').trim();
+    return !!dd&&dd<nowYMD;
+  };
   const closeModal=()=>{state.modal=null;setState({});};
   const overlay=h('div',{class:'modal-overlay'});
 
@@ -5702,7 +5709,7 @@ function renderEditOrderModal(order, prevModal){
   const endDateEditInp=makeInput('date',form.endDate,v=>{
     form.endDate=v;
     endDateLinked=(v===form.startDate);
-    if(isActiveLoan && isEndInPast(form.endDate,form.endTime)){
+    if(isActiveLoan && isEndDateBeforeToday(form.endDate)){
       alert('בהזמנה עם ציוד שעדיין מושאל, מועד ההחזרה לא יכול להיות בעבר. עדכנו לתאריך/שעה עתידיים (או להיום ואילך).');
       form.endDate=lastValidEndDate;
       if(endDateInputEl) endDateInputEl.value=lastValidEndDate;
@@ -5716,7 +5723,7 @@ function renderEditOrderModal(order, prevModal){
   },{disabled:isActiveLoan});
   const endTimeEditInp=makeInput('time',form.endTime,v=>{
     form.endTime=v;
-    if(isActiveLoan && isEndInPast(form.endDate,form.endTime)){
+    if(isActiveLoan && isEndDateBeforeToday(form.endDate)){
       alert('בהזמנה עם ציוד שעדיין מושאל, מועד ההחזרה לא יכול להיות בעבר. עדכנו לתאריך/שעה עתידיים (או להיום ואילך).');
       form.endTime=lastValidEndTime;
       if(endTimeEditInp) endTimeEditInp.value=lastValidEndTime;
@@ -5788,7 +5795,7 @@ function renderEditOrderModal(order, prevModal){
         }
         if(isOrderReturnBeforeStart(form.startDate,form.startTime,form.endDate,form.endTime)){alert('תאריך ושעת ההחזרה חייבים להיות אחרי מועד השאילה (לא ניתן לאשר הזמנה עם החזרה לפני השאילה).');return;}
         if(form.startDate===form.endDate&&form.startTime>=form.endTime){alert('שעת ההחזרה חייבת להיות אחרי שעת השאילה');return;}
-        if(isActiveLoan && isEndInPast(form.endDate,form.endTime)){
+        if(isActiveLoan && isEndDateBeforeToday(form.endDate)){
           alert('בהזמנה עם ציוד שעדיין מושאל, מועד ההחזרה לא יכול להיות בעבר. עדכנו לתאריך/שעה עתידיים (או להיום ואילך).');
           return;
         }
