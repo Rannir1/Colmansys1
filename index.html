@@ -5772,13 +5772,39 @@ function renderEditOrderModal(order, prevModal){
     if(saveBtnEl) saveBtnEl.disabled=c.length>0;
   };
   const makeInput=(type,val,cb,extra={})=>{
-    const i=h('input',{type,value:val,...extra});
-    if(type==='date'){
-      i.setAttribute('lang','he-IL');
+    const toDateDisplay=(ymd)=>{
+      const s=String(ymd||'').trim();
+      const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m?`${m[3]}.${m[2]}.${m[1]}`:s;
+    };
+    const parseDateDisplay=(raw,fallbackYmd)=>{
+      const s=String(raw||'').trim();
+      if(!s) return String(fallbackYmd||'').trim();
+      if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      const m=s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+      if(m){
+        const dd=String(parseInt(m[1],10)).padStart(2,'0');
+        const mm=String(parseInt(m[2],10)).padStart(2,'0');
+        const yyyy=m[3];
+        const ymd=`${yyyy}-${mm}-${dd}`;
+        return parseYMDLocal(ymd)?ymd:String(fallbackYmd||'').trim();
+      }
+      return String(fallbackYmd||'').trim();
+    };
+    const isDate=type==='date';
+    const i=h('input',{type:isDate?'text':type,value:isDate?toDateDisplay(val):val,...extra});
+    if(isDate){
+      i.setAttribute('inputmode','numeric');
+      i.setAttribute('placeholder','DD.MM.YYYY');
       i.style.direction='rtl';
       i.style.textAlign='right';
     }
-    i.addEventListener('change',e=>{cb(e.target.value);updateConflict();});
+    i.addEventListener('change',e=>{
+      const nextVal=isDate?parseDateDisplay(e.target.value,val):e.target.value;
+      cb(nextVal);
+      if(isDate) e.target.value=toDateDisplay(nextVal);
+      updateConflict();
+    });
     if(type!=='date') i.addEventListener('input',e=>{cb(e.target.value);updateConflict();});
     return i;
   };
