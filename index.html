@@ -7447,14 +7447,10 @@ function openLoanDetail(o){
             );
           })(),
           h('div',{style:{width:'100%',height:'1px',background:'var(--border)',margin:'8px 0 4px'}},''),
-          h('div',{style:{width:'100%',display:'flex',gap:'8px',flexWrap:'wrap',alignItems:'center'}},
-            h('span',{style:{fontSize:'11px',color:'var(--text3)',width:'100%',lineHeight:1.4}},'טופס השאלה לפי הרשימה במסך — הדפסה ו־PDF אינם סוגרים את החלון:'),
+          h('div',{style:{width:'100%',display:'flex',gap:'8px',justifyContent:'flex-start',flexWrap:'wrap',alignItems:'center'}},
             h('button',{class:'btn btn-sm btn-secondary',onclick:()=>printSupplyForm(liveOrderForForms())},'🖨 הדפס בלבד'),
-            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>downloadOrderPdf(liveOrderForForms())},'⬇ הורד PDF')
-          ),
-          h('div',{style:{width:'100%',display:'flex',flexWrap:'wrap',alignItems:'center',gap:'6px',fontSize:'10px',color:'var(--text3)',marginTop:'2px'}},
-            h('span',{},'אופציונלי (לרוב לא נדרש):'),
-            h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'10px',padding:'2px 8px'},onclick:()=>emailOrderPdf(liveOrderForForms())},'✉ שלח טופס במייל')
+            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>downloadOrderPdf(liveOrderForForms())},'⬇ הורד PDF'),
+            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>emailOrderPdf(liveOrderForForms())},'✉ שלח טופס במייל')
           )
         ]:[]),
         ...(['סופק','הוחזר חלקית'].includes(o.status)?(()=>{
@@ -7476,13 +7472,9 @@ function openLoanDetail(o){
           },'✅ כל הפריטים הוחזרו'),
           h('div',{style:{width:'100%',height:'1px',background:'var(--border)',margin:'2px 0 4px'}},''),
           h('div',{style:{width:'100%',display:'flex',gap:'8px',justifyContent:'flex-start',flexWrap:'wrap',alignItems:'center'}},
-            h('span',{style:{fontSize:'11px',color:'var(--text3)',width:'100%',lineHeight:1.4}},'טופס — ללא סגירת חלון:'),
             h('button',{class:'btn btn-sm btn-secondary',onclick:()=>printSupplyForm(liveOrderForForms())},'🖨 הדפס בלבד'),
-            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>downloadOrderPdf(liveOrderForForms())},'⬇ הורד PDF')
-          ),
-          h('div',{style:{width:'100%',display:'flex',flexWrap:'wrap',alignItems:'center',gap:'6px',fontSize:'10px',color:'var(--text3)',marginTop:'2px'}},
-            h('span',{},'אופציונלי (לרוב לא נדרש):'),
-            h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'10px',padding:'2px 8px'},onclick:()=>emailOrderPdf(liveOrderForForms())},'✉ שלח טופס במייל')
+            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>downloadOrderPdf(liveOrderForForms())},'⬇ הורד PDF'),
+            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>emailOrderPdf(liveOrderForForms())},'✉ שלח טופס במייל')
           ),
           h('div',{style:{fontSize:'11px',color:'var(--text3)',width:'100%',marginTop:'-4px',marginBottom:'4px'}},'חלקית: לפחות פריט אחד ב"הוחזרו" ועדיין יש חלקים בחוץ. מלאה: הכל ב"הוחזרו" (או "כל הפריטים הוחזרו").'),
           h('button',{
@@ -7516,10 +7508,7 @@ function openLoanDetail(o){
             h('button',{class:'btn btn-sm btn-secondary',onclick:()=>printSupplyForm(liveOrderForForms())},'🖨 הדפס בלבד'),
             h('button',{class:'btn btn-sm btn-secondary',onclick:()=>downloadOrderPdf(liveOrderForForms())},'⬇ הורד PDF')
           ),
-          h('div',{style:{width:'100%',display:'flex',flexWrap:'wrap',alignItems:'center',gap:'6px',fontSize:'10px',color:'var(--text3)',marginTop:'2px'}},
-            h('span',{},'אופציונלי (לרוב לא נדרש):'),
-            h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'10px',padding:'2px 8px'},onclick:()=>emailOrderPdf(liveOrderForForms())},'✉ שלח טופס במייל')
-          )
+          h('button',{class:'btn btn-sm btn-secondary',onclick:()=>emailOrderPdf(liveOrderForForms())},'✉ שלח טופס במייל')
         ] : []),
         // Series delete buttons (admin only)
         ...(state.user.role==='admin'&&!lockLoanModal&&(o.recurringGroupId||o.bulkGroupId||o.multiDateGroupId)?[(()=>{
