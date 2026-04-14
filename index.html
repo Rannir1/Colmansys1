@@ -2528,11 +2528,21 @@ function normalizeTime24(raw,fallback=''){
 function forceTimeInputs24(rootEl){
   try{
     (rootEl||document).querySelectorAll('input[type="time"]').forEach(i=>{
+      const norm0=normalizeTime24(i.value,'');
+      try{i.type='text';}catch(e){}
+      i.setAttribute('inputmode','numeric');
+      i.setAttribute('placeholder','HH:MM');
+      i.setAttribute('pattern','^([01]\\d|2[0-3]):[0-5]\\d$');
       i.setAttribute('lang','en-GB');
+      i.autocomplete='off';
+      i.style.direction='ltr';
+      if(norm0) i.value=norm0;
+      if(i.dataset.time24Bound==='1') return;
+      i.dataset.time24Bound='1';
       const norm=normalizeTime24(i.value,'');
       if(norm) i.value=norm;
       i.addEventListener('change',()=>{const v=normalizeTime24(i.value,'');if(v) i.value=v;},{passive:true});
-      i.addEventListener('input',()=>{const v=normalizeTime24(i.value,'');if(v) i.value=v;},{passive:true});
+      i.addEventListener('blur',()=>{const v=normalizeTime24(i.value,'');if(v) i.value=v;},{passive:true});
     });
   }catch(e){}
 }
