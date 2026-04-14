@@ -487,6 +487,28 @@ function cloudCollectKV(){
   }
   return kv;
 }
+function cloudMergeOrdersPreferLocal(remoteVal){
+  const remoteArr=Array.isArray(remoteVal)?remoteVal:[];
+  let localArr=[];
+  try{
+    const raw=localStorage.getItem(SK.orders);
+    if(raw){
+      const p=JSON.parse(raw);
+      if(Array.isArray(p)) localArr=p;
+    }
+  }catch(e){}
+  const byId=new Map();
+  for(const o of remoteArr){
+    if(!o||!o.id) continue;
+    byId.set(String(o.id),o);
+  }
+  for(const o of localArr){
+    if(!o||!o.id) continue;
+    // Keep local version on id collision to avoid losing latest local edits.
+    byId.set(String(o.id),o);
+  }
+  return Array.from(byId.values());
+}
 function cloudApplyKV(kv){
   if(!kv||typeof kv!=='object')return;
   cloudSyncBeginBatch();
@@ -496,7 +518,8 @@ function cloudApplyKV(kv){
       const v=kv[k];
       if(v===undefined)continue;
       if(v===null){(__eqsOrigRemoveItem||Storage.prototype.removeItem).call(localStorage,k);continue;}
-      (__eqsOrigSetItem||Storage.prototype.setItem).call(localStorage,k,JSON.stringify(v));
+      const finalV=(k===SK.orders)?cloudMergeOrdersPreferLocal(v):v;
+      (__eqsOrigSetItem||Storage.prototype.setItem).call(localStorage,k,JSON.stringify(finalV));
     }
   }finally{
     cloudSyncEndBatch();
@@ -1795,14 +1818,53 @@ function orderReservesInventoryId(o,itemId){
 }
 
 function getConflicts(itemId, startDate, endDate, startTime, endTime, excludeOrderId){
-  const fS=startTime||'00:00', fE=endTime||'23:59';
+  const debugConflicts=localStorage.getItem('eqsDebugConflicts')==='1';
+  const parseHm=(raw,fallback)=>{
+    const s=String(raw||'').trim().toUpperCase();
+    if(!s) return fallback;
+    const m12=s.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/);
+    if(m12){
+      let hh=parseInt(m12[1],10), mm=parseInt(m12[2],10);
+      if(Number.isNaN(hh)||Number.isNaN(mm)) return fallback;
+      const ap=m12[3];
+      if(ap==='AM'){ if(hh===12) hh=0; }
+      else { if(hh!==12) hh+=12; }
+      if(hh<0||hh>23||mm<0||mm>59) return fallback;
+      return hh*60+mm;
+    }
+    const m24=s.match(/^(\d{1,2}):(\d{2})$/);
+    if(m24){
+      const hh=parseInt(m24[1],10), mm=parseInt(m24[2],10);
+      if(Number.isNaN(hh)||Number.isNaN(mm)||hh<0||hh>23||mm<0||mm>59) return fallback;
+      return hh*60+mm;
+    }
+    return fallback;
+  };
+  const toMs=(ymd,hm,fallbackHm)=>{
+    const d=parseYMDLocal(ymd);
+    if(!d) return null;
+    const mins=parseHm(hm,fallbackHm);
+    return d.getTime()+mins*60*1000;
+  };
+  const reqStartMs=toMs(startDate,startTime,0);
+  const reqEndMs=toMs(endDate,endTime,23*60+59);
+  if(reqStartMs==null||reqEndMs==null) return [];
   return state.orders.filter(o=>{
     if(excludeOrderId && o.id===excludeOrderId) return false;
     if(o.status==='נדחתה'||o.status==='הוחזר'||o.status==='לא נלקחה') return false;
     if(o.startDate>endDate||o.endDate<startDate) return false;
-    const oS=o.startTime||'00:00', oE=o.endTime||'23:59';
-    if(!(fS<oE && fE>oS)) return false;
-    return orderReservesInventoryId(o,itemId);
+    const ordStartMs=toMs(o.startDate,o.startTime,0);
+    const ordEndMs=toMs(o.endDate,o.endTime,23*60+59);
+    if(ordStartMs==null||ordEndMs==null) return false;
+    if(!(reqStartMs<ordEndMs && reqEndMs>ordStartMs)) return false;
+    const reserves=orderReservesInventoryId(o,itemId);
+    if(debugConflicts&&reserves){
+      console.debug('[EQS conflicts]',{
+        requested:{itemId,startDate,endDate,startTime,endTime,excludeOrderId,reqStartMs,reqEndMs},
+        blocker:{id:o.id,orderNum:o.orderNum||'',status:o.status,startDate:o.startDate,endDate:o.endDate,startTime:o.startTime||'00:00',endTime:o.endTime||'23:59',ordStartMs,ordEndMs}
+      });
+    }
+    return reserves;
   });
 }
 
@@ -5473,11 +5535,39 @@ function renderEditOrderModal(order, prevModal){
     const mm=parts.find(p=>p.type==='minute')?.value||'00';
     return `${hh}:${mm}`;
   })();
+  const toMinutesLocal=(raw)=>{
+    const s=String(raw||'').trim().toUpperCase();
+    if(!s) return null;
+    const m12=s.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/);
+    if(m12){
+      let hh=parseInt(m12[1],10);
+      const mm=parseInt(m12[2],10);
+      const ap=m12[3];
+      if(Number.isNaN(hh)||Number.isNaN(mm)||mm<0||mm>59) return null;
+      if(ap==='AM'){ if(hh===12) hh=0; }
+      else { if(hh!==12) hh+=12; }
+      if(hh<0||hh>23) return null;
+      return hh*60+mm;
+    }
+    const m24=s.match(/^(\d{1,2}):(\d{2})$/);
+    if(m24){
+      const hh=parseInt(m24[1],10);
+      const mm=parseInt(m24[2],10);
+      if(Number.isNaN(hh)||Number.isNaN(mm)||hh<0||hh>23||mm<0||mm>59) return null;
+      return hh*60+mm;
+    }
+    return null;
+  };
   const isEndInPast=(d,t)=>{
     const dd=String(d||'').trim();
     const tt=String(t||'00:00').trim();
     if(!dd||!tt) return false;
-    return dd<nowYMD || (dd===nowYMD && tt<nowHM);
+    if(dd<nowYMD) return true;
+    if(dd>nowYMD) return false;
+    const endMin=toMinutesLocal(tt);
+    const nowMin=toMinutesLocal(nowHM);
+    if(endMin==null||nowMin==null) return false;
+    return endMin<nowMin;
   };
   const closeModal=()=>{state.modal=null;setState({});};
   const overlay=h('div',{class:'modal-overlay'});
