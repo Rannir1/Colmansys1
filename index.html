@@ -149,10 +149,10 @@ select option{background:var(--bg3)}
 .badge-gray{background:rgba(148,163,184,.15);color:#94a3b8}
 .badge-purple{background:rgba(139,92,246,.15);color:#a78bfa}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:999;padding:16px}
-.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:100%;max-width:580px;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow)}
+.modal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:100%;max-width:580px;max-height:min(92vh,92dvh);overflow-y:auto;scroll-padding-bottom:120px;box-shadow:var(--shadow)}
 .modal-lg{max-width:760px}
 .modal h2{font-size:17px;font-weight:700;margin-bottom:18px}
-.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;z-index:2;background:linear-gradient(to top,var(--bg2) 78%,rgba(22,27,39,0));margin-top:20px;padding-top:14px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border)}
 .search-bar{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
 .search-bar input{max-width:260px}
 .alert{padding:11px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
@@ -2893,7 +2893,9 @@ function renderApp(){
   const topNav=[
     {id:'dashboard',label:'לוח בקרה',icon:'🏠'},
     {id:'notifications',label:`הודעות${myNotifs.length>0?' ('+myNotifs.length+')':''}`,icon:'🔔'},
-    {id:'warehouse_hours',label:'שעות מחסן',icon:'🕐'}
+    {id:'warehouse_hours',label:'שעות מחסן',icon:'🕐'},
+    ...(isAdmin?[{id:'loans',label:'השאלות / החזרות',icon:'↔️'}]:[]),
+    ...(isAdmin?[{id:'kits',label:'ערכות',icon:'🧰'}]:[])
   ];
   const sections=[
     {
@@ -2902,11 +2904,10 @@ function renderApp(){
       icon:'📋',
       items:[
         {id:'journals',label:'יומן הזמנות',icon:'📅'},
-        ...(!isAdmin?[{id:'loan_policies',label:'נהלי השאלת ציוד',icon:'📘'}]:[]),
+        ...(isAdmin?[{id:'orders',label:`כל ההזמנות${pending>0?` (${pending})`:''}`,icon:'🧾'}]:[]),
         {id:'my_reports',label:'ההזמנות שלי',icon:'📄'},
         ...(isAdmin?[{id:'deleted',label:'הזמנות שנמחקו/נדחו',icon:'🗑️'}]:[]),
-        ...(isAdmin?[{id:'journal_inventory',label:'מצלמות — 14 יום',icon:'📷'}]:[]),
-        ...(isAdmin?[{id:'orders',label:`כל ההזמנות${pending>0?` (${pending})`:''}`,icon:'🧾'}]:[])
+        ...(isAdmin?[{id:'journal_inventory',label:'מצלמות 14 יום',icon:'📷'}]:[])
       ]
     },
     ...(isAdmin?[{
@@ -2915,21 +2916,19 @@ function renderApp(){
       icon:'🗄️',
       items:[
         {id:'inventory',label:'רשימת מלאי',icon:'📦'},
-        {id:'stockcount',label:'ספירת מלאי',icon:'🔢'},
-        {id:'removed_inventory',label:'פריטים שהוצאו',icon:'🗃️'}
+        {id:'removed_inventory',label:'פריטים שהוצאו מהמלאי',icon:'🗃️'},
+        {id:'stockcount',label:'ספירת מלאי',icon:'🔢'}
       ]
     }]:[]),
-    {
+    ...(isAdmin?[{
       key:'system',
       label:'הגדרות מערכת',
       icon:'⚙️',
       items:[
-        ...(isAdmin?[{id:'loans',label:'השאלות / החזרות',icon:'↔️'}]:[]),
         ...(isAdmin?[{id:'reports',label:'דוחות',icon:'📊'}]:[]),
-        ...(isAdmin?[{id:'users',label:'ניהול משתמשים',icon:'👥'}]:[]),
-        ...(isAdmin?[{id:'kits',label:'ערכות',icon:'🧰'}]:[])
+        ...(isAdmin?[{id:'users',label:'ניהול משתמשים',icon:'👥'}]:[])
       ]
-    }
+    }]:[])
   ];
   const pageInSection=sec=>sec.items.some(it=>it.id===page);
   const activeSection=(sections.find(pageInSection)||sections[0]||{}).key||null;
@@ -9000,8 +8999,11 @@ function renderJournalInventoryProbe(){
   const {inventory,journals,user}=state;
   const users=state.users||[];
   if(user?.role!=='admin')return h('div',{class:'page-header'},h('h1',{},'אין הרשאה'));
-  const camJid=getCamerasJournalId();
-  const jLabel=journals.find(j=>String(j.id)===String(camJid))?.name||'מצלמות';
+  const fallbackJid=getCamerasJournalId();
+  const selectedJournalId=(state.journalInventoryJournalId&&journals.some(j=>String(j.id)===String(state.journalInventoryJournalId)))
+    ?state.journalInventoryJournalId
+    :fallbackJid;
+  const jLabel=journals.find(j=>String(j.id)===String(selectedJournalId))?.name||'מצלמות';
   const startYmd=state.cameraAvailWindowStart||today();
   const startD=parseYMDLocal(startYmd);
   if(!startD)return h('div',{class:'page-header'},h('h1',{},'תאריך התחלה לא תקין'));
@@ -9011,7 +9013,7 @@ function renderJournalInventoryProbe(){
   const w1=new Date(endD);w1.setHours(23,59,59,999);
   const win0=w0.getTime(), win1=w1.getTime();
 
-  const cameras=inventory.filter(i=>String(i.journalId)===String(camJid))
+  const cameras=inventory.filter(i=>String(i.journalId)===String(selectedJournalId))
     .sort((a,b)=>String(a.barcode||'').localeCompare(String(b.barcode||'')));
 
   const exportCsv=()=>{
@@ -9047,7 +9049,7 @@ function renderJournalInventoryProbe(){
     const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));
-    a.download=`מצלמות_14_ימים_${startYmd}.csv`;
+    a.download=`${String(jLabel||'יומן').replace(/[\\/:*?"<>|]/g,'_')}_14_ימים_${startYmd}.csv`;
     a.style.display='none';
     document.body.appendChild(a);a.click();document.body.removeChild(a);
   };
@@ -9105,12 +9107,19 @@ function renderJournalInventoryProbe(){
 
   return h('div',{},
     h('div',{class:'page-header'},
-      h('h1',{},'מצלמות — שיבוצים וזמינות'),
+      h('h1',{},'זמינות פריטים — 14 יום'),
       h('p',{style:{fontSize:'13px',color:'var(--text3)',lineHeight:1.55}},
-        `יומן «${jLabel}»: לכל מצלמה מופיעות כל ההזמנות ב־14 הימים מתאריך ההתחלה שבחרת, ומחושב מתי המצלמה `,h('strong',{},'פנויה ברצף'),' (בין הזמנה להזמנה).')
+        `יומן «${jLabel}»: לכל פריט מופיעות כל ההזמנות ב־14 הימים מתאריך ההתחלה שבחרת, ומחושב מתי הפריט `,h('strong',{},'פנוי ברצף'),' (בין הזמנה להזמנה).')
     ),
     h('div',{class:'card mb-4'},
       h('div',{style:{display:'flex',flexWrap:'wrap',gap:'12px',alignItems:'flex-end'}},
+        h('div',{},
+          h('label',{style:{fontSize:'13px'}},'יומן לבדיקה'),
+          (()=>{const s=h('select',{style:{width:'100%',maxWidth:'240px'}});
+            journals.forEach(j=>s.appendChild(h('option',{value:j.id,selected:String(j.id)===String(selectedJournalId)},j.name||j.id)));
+            s.addEventListener('change',e=>setState({journalInventoryJournalId:e.target.value}));
+            return s;})()
+        ),
         h('div',{},
           h('label',{style:{fontSize:'13px'}},'תאריך התחלה (14 ימים קדימה)'),
           (()=>{const i=h('input',{type:'date',value:startYmd,style:{width:'100%',maxWidth:'200px'}});
@@ -9122,7 +9131,7 @@ function renderJournalInventoryProbe(){
       ),
       h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'10px'}},`טווח מוצג: ${fmt(startYmd)} — ${fmt(endYmd)} (כלול)`)
     ),
-    cameras.length?h('div',{},...cards):h('div',{class:'alert alert-warning'},'אין פריטים ביומן המצלמות — ודאו שפריטים משויכים ליומן «מצלמות».')
+    cameras.length?h('div',{},...cards):h('div',{class:'alert alert-warning'},`אין פריטים ביומן «${jLabel}». ודאו שפריטים משויכים ליומן זה.`)
   );
 }
 
