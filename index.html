@@ -2509,9 +2509,8 @@ function nowTimeIL(){
 function normalizeTime24(raw,fallback=''){
   const s=String(raw||'').trim().toUpperCase();
   if(!s) return fallback;
-  const digitsOnly=s.replace(/\D/g,'');
-  if(/^\d{3,4}$/.test(digitsOnly)){
-    const p=digitsOnly.length===3?('0'+digitsOnly):digitsOnly;
+  if(/^\d{3,4}$/.test(s)){
+    const p=s.length===3?('0'+s):s;
     return `${p.slice(0,2)}:${p.slice(2,4)}`;
   }
   const m24=s.match(/^(\d{1,2}):(\d{2})$/);
@@ -2546,18 +2545,6 @@ function forceTimeInputs24(rootEl){
       i.dataset.time24Bound='1';
       const norm=normalizeTime24(i.value,'');
       if(norm) i.value=norm;
-      i.addEventListener('input',()=>{
-        const cur=String(i.value||'');
-        const normIn=normalizeTime24(cur,'');
-        if(normIn){ i.value=normIn; return; }
-        const d=cur.replace(/\D/g,'').slice(0,4);
-        if(d.length>=3){
-          const p=d.length===3?('0'+d):d;
-          i.value=`${p.slice(0,2)}:${p.slice(2,4)}`;
-        }else{
-          i.value=d;
-        }
-      },{passive:true});
       i.addEventListener('change',()=>{const v=normalizeTime24(i.value,'');if(v) i.value=v;},{passive:true});
       i.addEventListener('blur',()=>{const v=normalizeTime24(i.value,'');if(v) i.value=v;},{passive:true});
     });
