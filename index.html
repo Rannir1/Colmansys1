@@ -661,12 +661,28 @@ function localDateISO(dt=new Date()){
     return `${y}-${mo}-${da}`;
   }
 }
-/** YYYY-MM-DD -> Date (UTC midnight) בלי תלות באזור זמן. */
+/** Date string (YYYY-MM-DD or MM/DD/YYYY or DD/MM/YYYY) -> Date (UTC midnight) */
 function parseYMDLocal(ymd){
   if(!ymd||typeof ymd!=='string') return null;
-  const parts=ymd.split('-').map(Number);
-  if(parts.length<3||!Number.isFinite(parts[0])) return null;
-  const y=parts[0], mo=parts[1]-1, d=parts[2];
+  const s=ymd.trim();
+  let y=null, mo=null, d=null;
+  const iso=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(iso){
+    y=parseInt(iso[1],10);
+    mo=parseInt(iso[2],10)-1;
+    d=parseInt(iso[3],10);
+  }else{
+    const slash=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(!slash) return null;
+    let a=parseInt(slash[1],10);
+    let b=parseInt(slash[2],10);
+    y=parseInt(slash[3],10);
+    // If first segment cannot be month, treat as DD/MM/YYYY; otherwise default to MM/DD/YYYY.
+    if(a>12 && b<=12){ const tmp=a; a=b; b=tmp; }
+    mo=a-1;
+    d=b;
+  }
+  if(!Number.isFinite(y)||!Number.isFinite(mo)||!Number.isFinite(d)) return null;
   const x=new Date(Date.UTC(y,mo,d));
   return Number.isNaN(x.getTime())?null:x;
 }
@@ -5562,8 +5578,17 @@ function renderEditOrderModal(order, prevModal){
     const dd=String(d||'').trim();
     const tt=String(t||'00:00').trim();
     if(!dd||!tt) return false;
-    if(dd<nowYMD) return true;
-    if(dd>nowYMD) return false;
+    const endDateObj=parseYMDLocal(dd);
+    const nowDateObj=parseYMDLocal(nowYMD);
+    if(endDateObj&&nowDateObj){
+      const endDay=endDateObj.getTime();
+      const nowDay=nowDateObj.getTime();
+      if(endDay<nowDay) return true;
+      if(endDay>nowDay) return false;
+    }else{
+      if(dd<nowYMD) return true;
+      if(dd>nowYMD) return false;
+    }
     const endMin=toMinutesLocal(tt);
     const nowMin=toMinutesLocal(nowHM);
     if(endMin==null||nowMin==null) return false;
@@ -5745,14 +5770,13 @@ function renderEditOrderModal(order, prevModal){
           const startMin=toMinutesLocal(form.startTime||'00:00');
           const nowMin=toMinutesLocal(currentTime);
           const endMin=toMinutesLocal(form.endTime||'00:00');
-          const startInPast=(
-            form.startDate<todayStr||
-            (form.startDate===todayStr&&startMin!=null&&nowMin!=null&&startMin<nowMin)
-          );
-          const endInPast=(
-            form.endDate<todayStr||
-            (form.endDate===todayStr&&endMin!=null&&nowMin!=null&&endMin<=nowMin)
-          );
+          const sdObj=parseYMDLocal(form.startDate||'');
+          const edObj=parseYMDLocal(form.endDate||'');
+          const tdObj=parseYMDLocal(todayStr);
+          const sdCmp=(sdObj&&tdObj)?(sdObj.getTime()-tdObj.getTime()):String(form.startDate||'').localeCompare(todayStr);
+          const edCmp=(edObj&&tdObj)?(edObj.getTime()-tdObj.getTime()):String(form.endDate||'').localeCompare(todayStr);
+          const startInPast=(sdCmp<0||(sdCmp===0&&startMin!=null&&nowMin!=null&&startMin<nowMin));
+          const endInPast=(edCmp<0||(edCmp===0&&endMin!=null&&nowMin!=null&&endMin<=nowMin));
           if(!isActiveLoan&&startInPast){
             alert('לא ניתן לשמור עריכה כשהשאילה במועד עבר. יש לבחור תאריך/שעה עתידיים.');
             return;
