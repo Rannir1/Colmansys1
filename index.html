@@ -7351,42 +7351,44 @@ function openLoanDetail(o){
         renderList(),
         listEl
       ),
-      h('details',{style:{marginTop:'14px',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px',background:'var(--bg3)'}},
-        h('summary',{style:{cursor:'pointer',fontSize:'13px',fontWeight:'700',color:'var(--text2)'}},'📝 הערות מתקדמות (אספקה והחזרה)'),
-        h('div',{style:{marginTop:'10px'}},
-          h('h3',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px'}},'הערות אספקה'),
-          (()=>{
-            if(lockLoanModal){
-              return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'32px'}},supplyNotes||'—');
-            }
-            const ta=h('textarea',{placeholder:'הערות לאספקה, הוראות מיוחדות...',style:{width:'100%',minHeight:'36px',resize:'vertical'}});
-            ta.value=supplyNotes;
-            ta.addEventListener('input',e=>{supplyNotes=e.target.value;autoSave();});
-            return ta;
-          })()
+      h('div',{style:{marginTop:'10px',display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:'8px',alignItems:'start'}},
+        h('details',{style:{marginTop:'0',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px',background:'var(--bg3)'}},
+          h('summary',{style:{cursor:'pointer',fontSize:'13px',fontWeight:'700',color:'var(--text2)'}},'📝 הערות מתקדמות (אספקה והחזרה)'),
+          h('div',{style:{marginTop:'10px'}},
+            h('h3',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px'}},'הערות אספקה'),
+            (()=>{
+              if(lockLoanModal){
+                return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'32px'}},supplyNotes||'—');
+              }
+              const ta=h('textarea',{placeholder:'הערות לאספקה, הוראות מיוחדות...',style:{width:'100%',minHeight:'36px',resize:'vertical'}});
+              ta.value=supplyNotes;
+              ta.addEventListener('input',e=>{supplyNotes=e.target.value;autoSave();});
+              return ta;
+            })()
+          ),
+          h('div',{style:{marginTop:'10px'}},
+            h('h3',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px',color:'#ea580c'}},'הערות להחזרה (מנהל)'),
+            h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'6px'}},'נשמרות בפרטי ההזמנה גם אחרי שהציוד הוחזר.'),
+            (()=>{
+              if(lockLoanModal){
+                return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'32px'}},returnNotes||'—');
+              }
+              const ta=h('textarea',{placeholder:'מצב הציוד, חוסרים, תאריך בדיקה, הערות למנהל המחסן...',style:{width:'100%',minHeight:'40px',resize:'vertical',borderColor:'rgba(234,88,12,0.35)',background:'rgba(255,247,237,0.35)'}});
+              ta.value=returnNotes;
+              ta.addEventListener('input',e=>{returnNotes=e.target.value;autoSave();});
+              return ta;
+            })()
+          )
         ),
-        h('div',{style:{marginTop:'10px'}},
-          h('h3',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px',color:'#ea580c'}},'הערות להחזרה (מנהל)'),
-          h('div',{style:{fontSize:'11px',color:'var(--text3)',marginBottom:'6px'}},'נשמרות בפרטי ההזמנה גם אחרי שהציוד הוחזר.'),
-          (()=>{
-            if(lockLoanModal){
-              return h('div',{style:{fontSize:'13px',color:'var(--text2)',whiteSpace:'pre-wrap',minHeight:'32px'}},returnNotes||'—');
-            }
-            const ta=h('textarea',{placeholder:'מצב הציוד, חוסרים, תאריך בדיקה, הערות למנהל המחסן...',style:{width:'100%',minHeight:'40px',resize:'vertical',borderColor:'rgba(234,88,12,0.35)',background:'rgba(255,247,237,0.35)'}});
-            ta.value=returnNotes;
-            ta.addEventListener('input',e=>{returnNotes=e.target.value;autoSave();});
-            return ta;
-          })()
+        h('div',{style:{marginTop:'0',padding:'8px',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg3)'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',flexWrap:'wrap'}},
+            h('span',{style:{fontSize:'12px',fontWeight:'700'}},sigDataUrl?'✍️ קיימת חתימה דיגיטלית להזמנה':'✍️ אין חתימה דיגיטלית עדיין'),
+            lockLoanModal
+              ? h('span',{style:{fontSize:'11px',color:'var(--text3)'}},'הזמנה נעולה')
+              : h('button',{class:'btn btn-sm btn-secondary',onclick:openSignaturePad},'פתח לוח החתמה')
+          ),
+          sigDataUrl?h('img',{src:sigDataUrl,alt:'חתימה דיגיטלית',style:{marginTop:'8px',maxWidth:'100%',maxHeight:'80px',border:'1px solid var(--border)',borderRadius:'6px',background:'#fff'}}):h('span',{})
         )
-      ),
-      h('div',{style:{marginTop:'10px',padding:'8px',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg3)'}},
-        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px',flexWrap:'wrap'}},
-          h('span',{style:{fontSize:'12px',fontWeight:'700'}},sigDataUrl?'✍️ קיימת חתימה דיגיטלית להזמנה':'✍️ אין חתימה דיגיטלית עדיין'),
-          lockLoanModal
-            ? h('span',{style:{fontSize:'11px',color:'var(--text3)'}},'הזמנה נעולה')
-            : h('button',{class:'btn btn-sm btn-secondary',onclick:openSignaturePad},'פתח לוח החתמה')
-        ),
-        sigDataUrl?h('img',{src:sigDataUrl,alt:'חתימה דיגיטלית',style:{marginTop:'8px',maxWidth:'100%',maxHeight:'80px',border:'1px solid var(--border)',borderRadius:'6px',background:'#fff'}}):h('span',{})
       ),
       h('div',{class:'modal-footer',style:{flexWrap:'wrap',justifyContent:'flex-start',gap:'10px'}},
         h('button',{class:'btn btn-secondary',onclick:closePrepModal},'סגור'),
