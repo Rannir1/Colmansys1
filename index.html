@@ -309,7 +309,6 @@ const load=(k,d)=>{
 };
 function eqsMigrateUntrackedStudentsFromStorage(){
   if(typeof EQS_DEMO!=='undefined'&&EQS_DEMO)return;
-  if(typeof EQS_PUBLIC_DEPLOY!=='undefined'&&EQS_PUBLIC_DEPLOY)return;
   try{
     var arr=JSON.parse(localStorage.getItem(SK.users)||'[]');
     if(!Array.isArray(arr)||arr.length===0)return;
@@ -320,6 +319,14 @@ function eqsMigrateUntrackedStudentsFromStorage(){
       return tz.length>=5&&nm.length>0;
     }
     var next=arr.filter(isValidUser);
+    var embeddedIds=new Set((ALL_STUDENTS||[]).map(function(u){return String((u&&((u.id!=null&&u.id)||u.tz))||'').trim();}).filter(Boolean));
+    next=next.filter(function(u){
+      if(!u)return false;
+      if(String(u.role||'')==='admin') return true;
+      var isManual=u._manualAdded===true||String(u._importSource||'').toLowerCase()==='manual';
+      var idKey=String((u.id!=null&&u.id)||u.tz||'').trim();
+      return isManual||!embeddedIds.has(idKey);
+    });
     if(next.length===0)return;
     if(!next.some(function(u){return u&&String(u.role||'')==='admin';})){
       var fallback=(ALL_STUDENTS||[]).find(function(u){return u&&String(u.role||'')==='admin';});
@@ -331,6 +338,10 @@ function eqsMigrateUntrackedStudentsFromStorage(){
     var changed=next.length!==arr.length;
     if(changed)save(SK.users,next);
   }catch(e){}
+}
+function getEmbeddedAdminOnlyUsers(){
+  var a=(ALL_STUDENTS||[]).find(function(u){return u&&String(u.role||'')==='admin';});
+  return a?[a]:[];
 }
 
 // ---------- סנכרון ענן (Supabase REST) — נתונים משותפים לכל המכשירים ----------
@@ -828,7 +839,7 @@ function runEnsureAdmin(){
   try {
     var users = JSON.parse(localStorage.getItem(SK.users)||'[]');
     var existing = users.find(function(u){return u.id==="pub_admin_internal";});
-    var defaults = {id:"pub_admin_internal",tz:"900000001",name:"מנהל מערכת",password:"pubadmin1",role:"admin",address:"תל אביב",phone:"050-0000000",email:"demo@example.com",extraFields:{}};
+    var defaults = {id:"pub_admin_internal",tz:"900000001",name:"מנהל מערכת",password:"pubadmin1",role:"admin",address:"",phone:"",email:"demo@example.com",extraFields:{}};
     var admin = existing ? Object.assign({}, defaults, existing, {id:"pub_admin_internal",role:"admin"}) : defaults;
     users = users.filter(function(u){return u.id!=="pub_admin_internal";});
     users.unshift(admin);
@@ -863,7 +874,7 @@ try {
     if(EQS_PUBLIC_DEPLOY){
       try{
         if(!localStorage.getItem(SK.users)){
-          save(SK.users,ALL_STUDENTS);
+          save(SK.users,getEmbeddedAdminOnlyUsers());
         }
       }catch(e){}
       return;
@@ -872,7 +883,7 @@ try {
       var stored=JSON.parse(localStorage.getItem(SK.users)||'null');
       if(!stored){
         // First load — use ALL_STUDENTS
-        save(SK.users,ALL_STUDENTS);
+        save(SK.users,getEmbeddedAdminOnlyUsers());
         return;
       }
       // אין מיזוג אוטומטי מ־ALL_STUDENTS: במצב פנימי זה היה מוסיף בכל טעינה סטודנטים מהקובץ המוטמע
