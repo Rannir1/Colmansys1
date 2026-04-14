@@ -2506,6 +2506,36 @@ function nowTimeIL(){
   const p=nowPartsIL();
   return `${String(p.hh).padStart(2,'0')}:${String(p.mm).padStart(2,'0')}`;
 }
+function normalizeTime24(raw,fallback=''){
+  const s=String(raw||'').trim().toUpperCase();
+  if(!s) return fallback;
+  const m24=s.match(/^(\d{1,2}):(\d{2})$/);
+  if(m24){
+    const hh=parseInt(m24[1],10), mm=parseInt(m24[2],10);
+    if(Number.isNaN(hh)||Number.isNaN(mm)||hh<0||hh>23||mm<0||mm>59) return fallback;
+    return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  }
+  const m12=s.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/);
+  if(m12){
+    let hh=parseInt(m12[1],10), mm=parseInt(m12[2],10);
+    if(Number.isNaN(hh)||Number.isNaN(mm)||mm<0||mm>59) return fallback;
+    if(m12[3]==='AM'){ if(hh===12) hh=0; } else { if(hh!==12) hh+=12; }
+    if(hh<0||hh>23) return fallback;
+    return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  }
+  return fallback;
+}
+function forceTimeInputs24(rootEl){
+  try{
+    (rootEl||document).querySelectorAll('input[type="time"]').forEach(i=>{
+      i.setAttribute('lang','en-GB');
+      const norm=normalizeTime24(i.value,'');
+      if(norm) i.value=norm;
+      i.addEventListener('change',()=>{const v=normalizeTime24(i.value,'');if(v) i.value=v;},{passive:true});
+      i.addEventListener('input',()=>{const v=normalizeTime24(i.value,'');if(v) i.value=v;},{passive:true});
+    });
+  }catch(e){}
+}
 const fmt=(d)=>{if(!d)return'—';const p=d.split('-');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:d;};
 const BROADCAST_SESSION_DISMISS_PREFIX='eqs_bd_sess_';
 function broadcastSessionDismissKey(){return BROADCAST_SESSION_DISMISS_PREFIX+(state.user?.id||'guest');}
@@ -2763,6 +2793,7 @@ function render(){
     }catch(e){}
     root.appendChild(renderApp());
     if(state.modal)root.appendChild(state.modal());
+    forceTimeInputs24(root);
   }catch(err){
     console.error('EQS render',err);
     try{root.innerHTML='';}catch(_e){}
@@ -3829,9 +3860,11 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
     return d<ts||(d===ts&&String(t||'00:00')<ct);
   }
   const makeInput=(type,val,onchange,extra={})=>{
-    const i=h('input',{type,value:val,...extra});
-    i.addEventListener('change',e=>onchange(e.target.value));
-    if(type!=='date') i.addEventListener('input',e=>onchange(e.target.value));
+    const v0=(type==='time')?normalizeTime24(val,'00:00'):val;
+    const i=h('input',{type,value:v0,...extra});
+    if(type==='time') i.setAttribute('lang','en-GB');
+    i.addEventListener('change',e=>onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value));
+    if(type!=='date') i.addEventListener('input',e=>onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value));
     return i;
   };
   const bulkBorrowDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
@@ -4580,9 +4613,11 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     return sel;
   };
   const makeInput=(type,val,onchange,extra={})=>{
-    const i=h('input',{type,value:val,...extra});
-    i.addEventListener('change',e=>{onchange(e.target.value);updateConflictMsg()});
-    if(type!=='date') i.addEventListener('input',e=>{onchange(e.target.value);updateConflictMsg()});
+    const v0=(type==='time')?normalizeTime24(val,'00:00'):val;
+    const i=h('input',{type,value:v0,...extra});
+    if(type==='time') i.setAttribute('lang','en-GB');
+    i.addEventListener('change',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);updateConflictMsg()});
+    if(type!=='date') i.addEventListener('input',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);updateConflictMsg()});
     return i;
   };
   
@@ -7608,9 +7643,11 @@ function openQuickOrderModal(date){
   const itemAreaEl=h('div',{});
 
   const makeInput=(type,val,onchange,extra={})=>{
-    const i=h('input',{type,value:val,...extra});
-    i.addEventListener('change',e=>{onchange(e.target.value);refreshConflict();});
-    i.addEventListener('input',e=>{onchange(e.target.value);refreshConflict();});
+    const v0=(type==='time')?normalizeTime24(val,'00:00'):val;
+    const i=h('input',{type,value:v0,...extra});
+    if(type==='time') i.setAttribute('lang','en-GB');
+    i.addEventListener('change',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);refreshConflict();});
+    i.addEventListener('input',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);refreshConflict();});
     return i;
   };
 
