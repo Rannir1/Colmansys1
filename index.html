@@ -3878,7 +3878,7 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
     const i=h('input',{type,value:v0,...extra});
     if(type==='time') i.setAttribute('lang','en-GB');
     i.addEventListener('change',e=>onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value));
-    if(type!=='date') i.addEventListener('input',e=>onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value));
+    if(type!=='date') i.addEventListener('input',e=>onchange(e.target.value));
     return i;
   };
   const bulkBorrowDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
@@ -4631,7 +4631,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     const i=h('input',{type,value:v0,...extra});
     if(type==='time') i.setAttribute('lang','en-GB');
     i.addEventListener('change',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);updateConflictMsg()});
-    if(type!=='date') i.addEventListener('input',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);updateConflictMsg()});
+    if(type!=='date') i.addEventListener('input',e=>{onchange(e.target.value);updateConflictMsg()});
     return i;
   };
   
@@ -7661,7 +7661,7 @@ function openQuickOrderModal(date){
     const i=h('input',{type,value:v0,...extra});
     if(type==='time') i.setAttribute('lang','en-GB');
     i.addEventListener('change',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);refreshConflict();});
-    i.addEventListener('input',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);refreshConflict();});
+    i.addEventListener('input',e=>{onchange(e.target.value);refreshConflict();});
     return i;
   };
 
