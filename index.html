@@ -517,10 +517,14 @@ function cloudMergeOrdersPreferLocal(remoteVal){
       localStatus==='מחכה לאישור' &&
       remoteStatus &&
       remoteStatus!==localStatus;
+    const remoteStudentEditPending=
+      remoteStatus==='מחכה לאישור' &&
+      localStatus!=='מחכה לאישור' &&
+      !!remote._isExtensionRequest;
     const remoteCancelDecision=
       !!remote.cancelRequestStatus &&
       String(remote.cancelRequestStatus||'')!==String(local.cancelRequestStatus||'');
-    if(remoteStatusAdvanced||remoteCancelDecision){
+    if(remoteStatusAdvanced||remoteStudentEditPending||remoteCancelDecision){
       byId.set(id,remote);
       continue;
     }
@@ -7180,6 +7184,10 @@ function openLoanDetail(o){
         `הכנת הזמנה לאספקה${o.orderNum?' — #'+o.orderNum:''}`
       ),
       msgEl,
+      h('div',{style:{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}},
+        h('span',{style:{fontWeight:'800',color:'var(--text2)',fontSize:'12px'}},'סטטוס נוכחי:'),
+        orderBadge(o.status)
+      ),
       h('div',{style:{background:'var(--bg3)',borderRadius:'9px',padding:'14px',marginBottom:'14px'}},
         h('div',{style:{display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px'}},
           h('div',{style:{fontWeight:'800',fontSize:'16px',color:'var(--text)'}},`${u?.name||'—'}`),
