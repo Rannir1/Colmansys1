@@ -8385,6 +8385,26 @@ function renderItemModal(item){
     supplier:()=>[...new Set(state.inventory.map(i=>i.supplier).filter(Boolean))],
     location:()=>[...new Set(state.inventory.map(i=>i.location).filter(Boolean))],
   };
+  const toDateDisplay=(ymd)=>{
+    const s=String(ymd||'').trim();
+    const d=parseYMDLocal(s);
+    if(!d) return s;
+    const norm=localDateISO(d);
+    const m=norm.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m?`${m[3]}.${m[2]}.${m[1]}`:s;
+  };
+  const parseDateDisplay=(raw,fallbackYmd='')=>{
+    const s=String(raw||'').trim();
+    if(!s) return String(fallbackYmd||'').trim();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m=s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    if(!m) return String(fallbackYmd||'').trim();
+    const dd=String(parseInt(m[1],10)).padStart(2,'0');
+    const mm=String(parseInt(m[2],10)).padStart(2,'0');
+    const yyyy=m[3];
+    const ymd=`${yyyy}-${mm}-${dd}`;
+    return parseYMDLocal(ymd)?ymd:String(fallbackYmd||'').trim();
+  };
   const inp=(lbl,key,type='text',extra={})=>{
     const i=h('input',{type,value:form[key]||'',...extra});
     i.addEventListener('input',e=>form[key]=type==='number'?parseFloat(e.target.value)||0:e.target.value);
@@ -8423,7 +8443,7 @@ function renderItemModal(item){
         const row=h('div',{style:{display:'flex',gap:'6px'}});
         const si=h('input',{value:form.supplier||''});
         si.addEventListener('input',e=>form.supplier=e.target.value);
-        if(AC_FIELDS.supplier) makeAutocomplete(si,AC_FIELDS.supplier);
+        const acSupplier=AC_FIELDS.supplier?makeAutocomplete(si,AC_FIELDS.supplier):si;
         const detailsBtn=h('button',{class:'btn btn-secondary',style:{whiteSpace:'nowrap',fontSize:'12px'},type:'button',onclick:()=>{
           // Load existing supplier details
           const suppData=JSON.parse(localStorage.getItem('eqs_suppliers')||'{}');
@@ -8449,17 +8469,19 @@ function renderItemModal(item){
           ));
           ov.appendChild(box);document.body.appendChild(ov);
         }},'📋 פרטי ספק');
-        row.appendChild(si);row.appendChild(detailsBtn);wrap.appendChild(row);return wrap;
+        row.appendChild(acSupplier);row.appendChild(detailsBtn);wrap.appendChild(row);return wrap;
       })(),
       (()=>{
         const pdWrap=h('div',{class:'form-group',style:{flex:1}});
         pdWrap.appendChild(h('label',{},'תאריך רכישה'));
-        const pdi=h('input',{type:'date',value:form.purchaseDate||''});
+        const pdi=h('input',{type:'text',value:toDateDisplay(form.purchaseDate||''),placeholder:'DD.MM.YYYY',inputmode:'numeric',style:{direction:'rtl',textAlign:'right'}});
         pdi.addEventListener('change',e=>{
-          form.purchaseDate=e.target.value;
+          const nextYmd=parseDateDisplay(e.target.value,form.purchaseDate||'');
+          form.purchaseDate=nextYmd;
+          e.target.value=toDateDisplay(nextYmd);
           // Auto-fill warranty if empty
-          if(!form.warrantyDate&&e.target.value){
-            const d=parseYMDLocal(e.target.value);
+          if(!form.warrantyDate&&nextYmd){
+            const d=parseYMDLocal(nextYmd);
             if(!d) return;
             d.setFullYear(d.getFullYear()+1);
             const wVal=localDateISO(d);
