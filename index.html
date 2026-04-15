@@ -2562,7 +2562,9 @@ function forceDateInputsHebrew(rootEl){
       if(i.dataset.heDateBound==='1') return;
       i.dataset.heDateBound='1';
       const wrap=document.createElement('div');
-      wrap.style.display='block';
+      wrap.style.display='flex';
+      wrap.style.alignItems='center';
+      wrap.style.gap='6px';
       wrap.style.width='100%';
       const txt=document.createElement('input');
       txt.type='text';
@@ -2591,6 +2593,14 @@ function forceDateInputsHebrew(rootEl){
       };
       txt.addEventListener('change',commitTextToDate);
       txt.addEventListener('blur',commitTextToDate);
+      const calBtn=document.createElement('button');
+      calBtn.type='button';
+      calBtn.className='btn btn-secondary';
+      calBtn.textContent='📅';
+      calBtn.style.padding='6px 9px';
+      calBtn.style.fontSize='14px';
+      calBtn.style.lineHeight='1';
+      calBtn.addEventListener('click',()=>{try{i.showPicker();}catch(_){i.click();}});
       i.addEventListener('input',syncText,{passive:true});
       i.addEventListener('change',syncText,{passive:true});
       const valueDesc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
@@ -2604,6 +2614,7 @@ function forceDateInputsHebrew(rootEl){
       i.style.display='none';
       i.insertAdjacentElement('beforebegin',wrap);
       wrap.appendChild(txt);
+      wrap.appendChild(calBtn);
       wrap.appendChild(i);
       syncText();
     });
@@ -4780,8 +4791,10 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     return `${y}-${mo}-${d}`;
   };
   const makeILDateControl=(val,onchange,extra={})=>{
-    const wrap=h('div',{style:{display:'block'}});
+    const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
     const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{width:'100%',direction:'ltr',textAlign:'left'}});
+    const pick=h('input',{type:'date',value:val,...extra,style:{position:'absolute',opacity:'0',pointerEvents:'none',width:'1px',height:'1px'}});
+    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 9px',fontSize:'14px',lineHeight:1},onclick:()=>{try{pick.showPicker();}catch(_){pick.click();}}},'📅');
     const minDate=String(extra&&extra.min?extra.min:'').trim();
     const setValue=(ymd)=>{
       const y=String(ymd||'').trim();
@@ -4793,7 +4806,10 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
       if(minDate&&ymd<minDate){ setValue(minDate); onchange(minDate); updateConflictMsg(); return; }
       setValue(ymd); onchange(ymd); updateConflictMsg();
     });
+    pick.addEventListener('change',e=>{setValue(e.target.value); onchange(e.target.value); updateConflictMsg();});
     wrap.appendChild(txt);
+    wrap.appendChild(calBtn);
+    wrap.appendChild(pick);
     setValue(val);
     return {el:wrap,setValue,getValue:()=>parseDateInputToYMD(txt.value)||''};
   };
