@@ -2558,6 +2558,27 @@ function forceTimeInputs24(rootEl){
     });
   }catch(e){}
 }
+function forceDateInputsHebrew(rootEl){
+  try{
+    (rootEl||document).querySelectorAll('input[type="date"]').forEach(i=>{
+      i.setAttribute('lang','he-IL');
+      i.setAttribute('dir','rtl');
+      i.style.direction='rtl';
+      i.style.textAlign='right';
+      const setMeta=()=>{
+        const v=String(i.value||'').trim();
+        const txt=v?fmt(v):'';
+        i.title=txt?`תאריך: ${txt}`:'';
+        i.setAttribute('aria-label',txt?`תאריך ${txt}`:'תאריך');
+      };
+      setMeta();
+      if(i.dataset.heDateBound==='1') return;
+      i.dataset.heDateBound='1';
+      i.addEventListener('change',setMeta,{passive:true});
+      i.addEventListener('input',setMeta,{passive:true});
+    });
+  }catch(e){}
+}
 const fmt=(d)=>{if(!d)return'—';const p=d.split('-');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:d;};
 const BROADCAST_SESSION_DISMISS_PREFIX='eqs_bd_sess_';
 function broadcastSessionDismissKey(){return BROADCAST_SESSION_DISMISS_PREFIX+(state.user?.id||'guest');}
@@ -2816,6 +2837,7 @@ function render(){
     root.appendChild(renderApp());
     if(state.modal)root.appendChild(state.modal());
     forceTimeInputs24(root);
+    forceDateInputsHebrew(root);
   }catch(err){
     console.error('EQS render',err);
     try{root.innerHTML='';}catch(_e){}
@@ -4514,8 +4536,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
   const borrowDateDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
   const returnDateDowLine=h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px',minHeight:'16px',lineHeight:1.4}});
   const updateOrderBorrowReturnDayLines=()=>{
-    borrowDateDowLine.textContent=hebrewWeekdayLabelFromYMD(form.startDate)||'—';
-    returnDateDowLine.textContent=hebrewWeekdayLabelFromYMD(form.endDate)||'—';
+    borrowDateDowLine.textContent=form.startDate?`${hebrewWeekdayLabelFromYMD(form.startDate)||''} · ${fmt(form.startDate)}`:'—';
+    returnDateDowLine.textContent=form.endDate?`${hebrewWeekdayLabelFromYMD(form.endDate)||''} · ${fmt(form.endDate)}`:'—';
   };
 
   const updateWarehousePreview=()=>{
@@ -4594,9 +4616,13 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     const endPast=eCmp<0||(eCmp===0&&eMin!=null&&nowMin!=null&&eMin<=nowMin);
     const submitBtn=(()=>{const s=document.getElementById('_submitOrderBtn');return s&&s.closest?s.closest('button'):null;})();
     const c=checkConflict();
+    const whMsg=getWarehouseOrderBlockMessage(form.startDate,form.startTime,form.endDate,form.endTime,isAdmin);
     if(c){
       const u2=users.find(u=>u.id===c[0].userId);
       conflictMsgEl.innerHTML=`<div class="alert alert-danger">⚠️ הפריט תפוס! (${u2?.name||'סטודנט'}: ${fmt(c[0].startDate)} ${c[0].startTime||''}–${c[0].endTime||''})</div>`;
+      if(submitBtn){submitBtn.disabled=true;submitBtn.style.opacity='0.45';submitBtn.style.cursor='not-allowed';}
+    } else if(whMsg){
+      conflictMsgEl.innerHTML=`<div class="alert alert-danger">${whMsg}</div>`;
       if(submitBtn){submitBtn.disabled=true;submitBtn.style.opacity='0.45';submitBtn.style.cursor='not-allowed';}
     } else if(startPast||endPast){
       const msg=startPast
@@ -4622,6 +4648,12 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     const v0=(type==='time')?normalizeTime24(val,'00:00'):val;
     const i=h('input',{type,value:v0,...extra});
     if(type==='time') i.setAttribute('lang','en-GB');
+    if(type==='date'){
+      i.setAttribute('lang','he-IL');
+      i.setAttribute('dir','rtl');
+      i.style.direction='rtl';
+      i.style.textAlign='right';
+    }
     i.addEventListener('change',e=>{onchange(type==='time'?normalizeTime24(e.target.value,'00:00'):e.target.value);updateConflictMsg()});
     if(type!=='date') i.addEventListener('input',e=>{onchange(e.target.value);updateConflictMsg()});
     return i;
@@ -4933,6 +4965,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
           dates.forEach(d=>{
             const t=getPickedTimes(d);
             if(!t.startTime||!t.endTime||t.startTime>=t.endTime){skippedPast.push(`${fmt(d)} (שעות לא תקינות)`);return;}
+            const whPickMsg=getWarehouseOrderBlockMessage(d,t.startTime,d,t.endTime,isAdmin);
+            if(whPickMsg){skippedPast.push(`${fmt(d)} (מחוץ לשעות פעילות)`);return;}
             if(d<todayStrP||(d===todayStrP&&t.startTime<currentTimeP)){skippedPast.push(fmt(d));return;}
             if(getConflicts(form.itemId,d,d,t.startTime,t.endTime,null).length>0){skippedBusy.push(fmt(d));return;}
             newOrdersP.push({...form,startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,id:genId(),orderNum:numP++,itemName:itemP?.name,itemBarcode:itemP?.barcode||'',journalId:itemP?.journalId||'',status:statusP,createdAt:new Date().toISOString(),multiDateGroupId:mdGid,notes:(form.notes||'')+(mdGid?' | סדרת תאריכים נבחרים':'')});
@@ -5036,6 +5070,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
             return false;
           };
           const pushOne=(sd,ed)=>{
+            const whRecMsg=getWarehouseOrderBlockMessage(sd,form.startTime,ed,form.endTime,isAdmin);
+            if(whRecMsg){skipped.push(`${fmt(sd)} · ${form.startTime||''}–${form.endTime||''} (מחוץ לשעות פעילות)`);return;}
             const busy=getConflicts(form.itemId,sd,ed,form.startTime,form.endTime,null).length>0;
             if(busy){skipped.push(`${fmt(sd)} · ${form.startTime||''}–${form.endTime||''}`);}
             else{newOrders.push({...form,id:genId(),orderNum:ordN++,startDate:sd,endDate:ed,itemName:item?.name,itemBarcode:item?.barcode||'',journalId:item?.journalId||'',status,createdAt:new Date().toISOString(),recurringGroupId:groupId});}
@@ -12080,13 +12116,17 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
               (()=>{const i=h('input',{value:c.title||'',placeholder:'למשל: חופשת מנהל'});i.addEventListener('input',e=>c.title=e.target.value);return i;})()
             ));
             const row=h('div',{class:'form-row'});
+            const startFmt=h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}},c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'');
             row.appendChild(h('div',{class:'form-group'},
               h('label',{style:{fontSize:'12px'}},'מתאריך'),
-              (()=>{const i=h('input',{type:'date',value:c.startDate||''});i.addEventListener('change',e=>c.startDate=e.target.value);return i;})()
+              (()=>{const i=h('input',{type:'date',value:c.startDate||''});i.addEventListener('change',e=>{c.startDate=e.target.value;startFmt.textContent=c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'';});return i;})(),
+              startFmt
             ));
+            const endFmt=h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}},c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'');
             row.appendChild(h('div',{class:'form-group'},
               h('label',{style:{fontSize:'12px'}},'עד תאריך'),
-              (()=>{const i=h('input',{type:'date',value:c.endDate||''});i.addEventListener('change',e=>c.endDate=e.target.value);return i;})()
+              (()=>{const i=h('input',{type:'date',value:c.endDate||''});i.addEventListener('change',e=>{c.endDate=e.target.value;endFmt.textContent=c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'';});return i;})(),
+              endFmt
             ));
             card.appendChild(row);
             card.appendChild(h('div',{class:'form-group'},
