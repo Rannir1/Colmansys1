@@ -4740,20 +4740,52 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     const cb=(v)=>{onchange(v);if(type==='date')updateDateWarn();};
     return origMakeInput(type,val,cb,extra);
   };
+  const parseDateInputToYMD=(raw)=>{
+    const s=String(raw||'').trim();
+    if(!s) return '';
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+    if(!m) return null;
+    const d=String(parseInt(m[1],10)).padStart(2,'0');
+    const mo=String(parseInt(m[2],10)).padStart(2,'0');
+    const y=String(parseInt(m[3],10));
+    if(Number(mo)<1||Number(mo)>12||Number(d)<1||Number(d)>31) return null;
+    return `${y}-${mo}-${d}`;
+  };
+  const makeILDateControl=(val,onchange,extra={})=>{
+    const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
+    const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{flex:1,direction:'ltr',textAlign:'left'}});
+    const pick=h('input',{type:'date',value:val,...extra,style:{width:'42px',padding:'6px 4px'}});
+    const setValue=(ymd)=>{
+      const y=String(ymd||'').trim();
+      pick.value=y;
+      txt.value=y?fmt(y):'';
+    };
+    txt.addEventListener('change',e=>{
+      const ymd=parseDateInputToYMD(e.target.value);
+      if(ymd===null){ setValue(pick.value||val||''); return; }
+      setValue(ymd); onchange(ymd); updateConflictMsg();
+    });
+    pick.addEventListener('change',e=>{ setValue(e.target.value); onchange(e.target.value); updateConflictMsg(); });
+    wrap.appendChild(txt);
+    wrap.appendChild(pick);
+    setValue(val);
+    return {el:wrap,setValue,getValue:()=>pick.value};
+  };
   updateDateWarn();
 
   // תאריך החזרה נשאר זהה לתאריך השאילה עד שמשנים אותו ידנית (אז לא מסנכרנים יותר)
   let endDateLinked=(String(form.endDate)===String(form.startDate));
-  let endDateInputEl=null;
+  let endDateInputCtrl=null;
   const onStartDateChange=v=>{
     form.startDate=v;
-    if(endDateLinked&&endDateInputEl){
+    if(endDateLinked&&endDateInputCtrl){
       form.endDate=v;
-      endDateInputEl.value=v;
+      endDateInputCtrl.setValue(v);
       updateConflictMsg();
-    } else if(String(v)>String(form.endDate)&&endDateInputEl){
+    } else if(String(v)>String(form.endDate)&&endDateInputCtrl){
       form.endDate=v;
-      endDateInputEl.value=v;
+      endDateInputCtrl.setValue(v);
       updateConflictMsg();
     }
     updateDateWarn();
@@ -4763,9 +4795,11 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     endDateLinked=(v===form.startDate);
     updateDateWarn();
   };
-  const startDateInp=makeInputWithWarn('date',form.startDate,onStartDateChange,{min:isAdmin?'':today()});
-  const endDateInp=makeInputWithWarn('date',form.endDate,onEndDateChange,{min:isAdmin?'':today()});
-  endDateInputEl=endDateInp;
+  const startDateCtrl=makeILDateControl(form.startDate,onStartDateChange,{min:isAdmin?'':today()});
+  const endDateCtrl=makeILDateControl(form.endDate,onEndDateChange,{min:isAdmin?'':today()});
+  const startDateInp=startDateCtrl.el;
+  const endDateInp=endDateCtrl.el;
+  endDateInputCtrl=endDateCtrl;
 
   const pickedDatesSet=new Set([form.startDate]);
   let pickedDateTimes={[form.startDate]:{startTime:form.startTime,endTime:form.endTime}};
