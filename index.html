@@ -2598,14 +2598,22 @@ function forceDateInputsHebrew(rootEl){
       calWrap.style.position='relative';
       calWrap.style.display='inline-flex';
       calWrap.style.alignItems='center';
+      calWrap.style.minWidth='40px';
+      calWrap.style.height='34px';
       const calBtn=document.createElement('button');
       calBtn.type='button';
       calBtn.className='btn btn-secondary';
       calBtn.textContent='📅';
-      calBtn.style.padding='6px 9px';
+      calBtn.style.padding='6px 10px';
       calBtn.style.fontSize='14px';
       calBtn.style.lineHeight='1';
       calBtn.style.pointerEvents='none';
+      calBtn.style.background='#2563eb';
+      calBtn.style.borderColor='#2563eb';
+      calBtn.style.color='#fff';
+      calBtn.style.borderRadius='8px';
+      calBtn.style.minWidth='40px';
+      calBtn.style.height='34px';
       i.addEventListener('input',syncText,{passive:true});
       i.addEventListener('change',syncText,{passive:true});
       const valueDesc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
@@ -4825,9 +4833,9 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
   const makeILDateControl=(val,onchange,extra={})=>{
     const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
     const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{width:'100%',direction:'ltr',textAlign:'left'}});
-    const calWrap=h('div',{style:{position:'relative',display:'inline-flex',alignItems:'center'}});
+    const calWrap=h('div',{style:{position:'relative',display:'inline-flex',alignItems:'center',minWidth:'40px',height:'34px'}});
     const pick=h('input',{type:'date',value:val,'data-he-date-proxy':'1',...extra,style:{position:'absolute',inset:0,opacity:'0',width:'100%',height:'100%',pointerEvents:'auto',cursor:'pointer',zIndex:2}});
-    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 9px',fontSize:'14px',lineHeight:1,pointerEvents:'none'}},'📅');
+    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 10px',fontSize:'14px',lineHeight:1,pointerEvents:'none',background:'#2563eb',borderColor:'#2563eb',color:'#fff',borderRadius:'8px',minWidth:'40px',height:'34px'}},'📅');
     const minDate=String(extra&&extra.min?extra.min:'').trim();
     const setValue=(ymd)=>{
       const y=String(ymd||'').trim();
@@ -5939,6 +5947,36 @@ function renderEditOrderModal(order, prevModal){
     if(type!=='date') i.addEventListener('input',e=>{cb(e.target.value);updateConflict();});
     return i;
   };
+  const makeILDateEditControl=(val,cb,extra={})=>{
+    const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
+    const txt=h('input',{type:'text',value:toDateDisplay(val),placeholder:'dd-mm-yyyy',style:{width:'100%',direction:'ltr',textAlign:'left'}});
+    const calWrap=h('div',{style:{position:'relative',display:'inline-flex',alignItems:'center',minWidth:'40px',height:'34px'}});
+    const pick=h('input',{type:'date',value:String(val||''),'data-he-date-proxy':'1',...extra,style:{position:'absolute',inset:0,opacity:'0',width:'100%',height:'100%',pointerEvents:'auto',cursor:'pointer',zIndex:2}});
+    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 10px',fontSize:'14px',lineHeight:1,pointerEvents:'none',background:'#2563eb',borderColor:'#2563eb',color:'#fff',borderRadius:'8px',minWidth:'40px',height:'34px'}},'📅');
+    const setValue=(ymd)=>{
+      const y=String(ymd||'').trim();
+      pick.value=y;
+      txt.value=y?toDateDisplay(y):'';
+    };
+    txt.addEventListener('change',e=>{
+      const next=parseDateDisplay(e.target.value,val);
+      setValue(next);
+      cb(next);
+      updateConflict();
+    });
+    pick.addEventListener('change',e=>{
+      const next=String(e.target.value||'').trim();
+      setValue(next);
+      cb(next);
+      updateConflict();
+    });
+    wrap.appendChild(txt);
+    wrap.appendChild(calWrap);
+    calWrap.appendChild(calBtn);
+    calWrap.appendChild(pick);
+    setValue(val);
+    return {el:wrap,setValue,getValue:()=>String(pick.value||'').trim()};
+  };
   const makeSelect=(opts,val,cb)=>{
     const s=h('select',{});
     opts.forEach(([v,l])=>{const o=h('option',{value:v},l);if(v===val)o.selected=true;s.appendChild(o);});
@@ -5951,33 +5989,37 @@ function renderEditOrderModal(order, prevModal){
   // סנכרון תאריך החזרה לשאילה כמו בהזמנה חדשה: אם תאריך השאילה מתארך אחרי ההחזרה — מעדכנים החזרה; כל עוד מקושרים — זהים.
   let endDateLinked=(order.endDate===order.startDate);
   let endDateInputEl=null;
+  let startDateInputEl=null;
   let lastValidEndDate=form.endDate;
   let lastValidEndTime=form.endTime;
-  const startDateEditInp=makeInput('date',form.startDate,v=>{
+  const startDateEditCtrl=makeILDateEditControl(form.startDate,v=>{
     form.startDate=v;
     if(endDateLinked&&endDateInputEl){
       form.endDate=v;
-      endDateInputEl.value=v;
+      endDateInputEl.setValue(v);
       lastValidEndDate=v;
     } else if(String(v)>String(form.endDate)){
       form.endDate=v;
-      if(endDateInputEl) endDateInputEl.value=v;
+      if(endDateInputEl) endDateInputEl.setValue(v);
       lastValidEndDate=v;
     }
     updateConflict();
   },{min:isAdmin?'':today(),disabled:isActiveLoan});
-  const endDateEditInp=makeInput('date',form.endDate,v=>{
+  const endDateEditCtrl=makeILDateEditControl(form.endDate,v=>{
     form.endDate=v;
     endDateLinked=(v===form.startDate);
     if(isActiveLoan && isEndDateBeforeToday(form.endDate)){
       alert('בהזמנה עם ציוד שעדיין מושאל, מועד ההחזרה לא יכול להיות בעבר. עדכנו לתאריך/שעה עתידיים (או להיום ואילך).');
       form.endDate=lastValidEndDate;
-      if(endDateInputEl) endDateInputEl.value=lastValidEndDate;
+      if(endDateInputEl) endDateInputEl.setValue(lastValidEndDate);
       return;
     }
     lastValidEndDate=form.endDate;
   },{min:(isActiveLoan?(form.startDate||order.startDate||''):(isAdmin?'':today()))});
-  endDateInputEl=endDateEditInp;
+  startDateInputEl=startDateEditCtrl;
+  endDateInputEl=endDateEditCtrl;
+  const startDateEditInp=startDateEditCtrl.el;
+  const endDateEditInp=endDateEditCtrl.el;
   const startTimeEditInp=makeInput('time',form.startTime,v=>{
     form.startTime=v;
   },{disabled:isActiveLoan});
@@ -8396,6 +8438,35 @@ function renderItemModal(item){
     s.addEventListener('change',e=>form[key]=e.target.value);
     return h('div',{class:'form-group'},h('label',{},lbl),s);
   };
+  const makeInventoryDateControl=(val,onchange,extra={})=>{
+    const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
+    const txt=h('input',{type:'text',value:toDateDisplay(val||''),placeholder:'dd-mm-yyyy',inputmode:'numeric',style:{direction:'ltr',textAlign:'left'}});
+    const calWrap=h('div',{style:{position:'relative',display:'inline-flex',alignItems:'center',minWidth:'40px',height:'34px'}});
+    const pick=h('input',{type:'date',value:String(val||''),'data-he-date-proxy':'1',...extra,style:{position:'absolute',inset:0,opacity:'0',width:'100%',height:'100%',pointerEvents:'auto',cursor:'pointer',zIndex:2}});
+    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 10px',fontSize:'14px',lineHeight:1,pointerEvents:'none',background:'#2563eb',borderColor:'#2563eb',color:'#fff',borderRadius:'8px',minWidth:'40px',height:'34px'}},'📅');
+    const setValue=(ymd)=>{
+      const y=String(ymd||'').trim();
+      pick.value=y;
+      txt.value=y?toDateDisplay(y):'';
+    };
+    txt.addEventListener('change',e=>{
+      const next=parseDateDisplay(e.target.value,String(pick.value||''));
+      setValue(next);
+      onchange(next);
+    });
+    pick.addEventListener('change',e=>{
+      const next=String(e.target.value||'').trim();
+      setValue(next);
+      onchange(next);
+    });
+    wrap.appendChild(txt);
+    wrap.appendChild(calWrap);
+    calWrap.appendChild(calBtn);
+    calWrap.appendChild(pick);
+    setValue(val);
+    return {el:wrap,setValue,getValue:()=>String(pick.value||'').trim()};
+  };
+  let warrantyDateCtrl=null;
   
   const modal=h('div',{class:'modal modal-lg'},
     h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px'}},
@@ -8449,11 +8520,8 @@ function renderItemModal(item){
       (()=>{
         const pdWrap=h('div',{class:'form-group',style:{flex:1}});
         pdWrap.appendChild(h('label',{},'תאריך רכישה'));
-        const pdi=h('input',{type:'text',value:toDateDisplay(form.purchaseDate||''),placeholder:'DD.MM.YYYY',inputmode:'numeric',style:{direction:'rtl',textAlign:'right'}});
-        pdi.addEventListener('change',e=>{
-          const nextYmd=parseDateDisplay(e.target.value,form.purchaseDate||'');
+        const purchaseCtrl=makeInventoryDateControl(form.purchaseDate||'',nextYmd=>{
           form.purchaseDate=nextYmd;
-          e.target.value=toDateDisplay(nextYmd);
           // Auto-fill warranty if empty
           if(!form.warrantyDate&&nextYmd){
             const d=parseYMDLocal(nextYmd);
@@ -8461,11 +8529,10 @@ function renderItemModal(item){
             d.setFullYear(d.getFullYear()+1);
             const wVal=localDateISO(d);
             form.warrantyDate=wVal;
-            const wi=document.querySelector('input[data-warranty="1"]');
-            if(wi) wi.value=wVal;
+            if(warrantyDateCtrl) warrantyDateCtrl.setValue(wVal);
           }
         });
-        pdWrap.appendChild(pdi);return pdWrap;
+        pdWrap.appendChild(purchaseCtrl.el);return pdWrap;
       })()
     ),
     h('div',{class:'form-row'},inp('מחיר רכישה (₪)','price','number'),inp('מספר חשבונית','invoiceNum')),
@@ -8474,8 +8541,7 @@ function renderItemModal(item){
       (()=>{
         const wWrap=h('div',{class:'form-group',style:{flex:1}});
         wWrap.appendChild(h('label',{},'באחריות עד'));
-        const wi=h('input',{type:'date',value:form.warrantyDate||'','data-warranty':'1'});
-        wi.addEventListener('change',e=>form.warrantyDate=e.target.value);
+        warrantyDateCtrl=makeInventoryDateControl(form.warrantyDate||'',next=>form.warrantyDate=next);
         // Auto-fill 1 year from purchase date
         const purchaseInp=document.querySelector && null; // will link after render
         wWrap._autoFill=()=>{
@@ -8483,11 +8549,12 @@ function renderItemModal(item){
             const d=parseYMDLocal(form.purchaseDate)||parseYMDLocal(String(form.purchaseDate).slice(0,10));
             if(!d) return;
             d.setFullYear(d.getFullYear()+1);
-            wi.value=localDateISO(d);form.warrantyDate=wi.value;
+            const next=localDateISO(d);
+            form.warrantyDate=next;
+            if(warrantyDateCtrl) warrantyDateCtrl.setValue(next);
           }
         };
-        wi._wrap=wWrap;
-        wWrap.appendChild(wi);return wWrap;
+        wWrap.appendChild(warrantyDateCtrl.el);return wWrap;
       })(),
       // ── Invoice/document upload ──
       (()=>{
@@ -12231,6 +12298,35 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
         const cloTitle=h('h3',{style:{fontSize:'14px',fontWeight:'800',marginTop:'22px',marginBottom:'10px'}},'תקופות סגירה (חופשה וכו׳)');
         root.appendChild(cloTitle);
         const cloList=h('div',{style:{display:'flex',flexDirection:'column',gap:'8px'}});
+        const makeClosureDateControl=(val,onChange)=>{
+          const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
+          const txt=h('input',{type:'text',value:fmt(val||''),placeholder:'dd-mm-yyyy',style:{direction:'ltr',textAlign:'left'}});
+          const calWrap=h('div',{style:{position:'relative',display:'inline-flex',alignItems:'center',minWidth:'40px',height:'34px'}});
+          const pick=h('input',{type:'date',value:String(val||''),'data-he-date-proxy':'1',style:{position:'absolute',inset:0,opacity:'0',width:'100%',height:'100%',pointerEvents:'auto',cursor:'pointer',zIndex:2}});
+          const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 10px',fontSize:'14px',lineHeight:1,pointerEvents:'none',background:'#2563eb',borderColor:'#2563eb',color:'#fff',borderRadius:'8px',minWidth:'40px',height:'34px'}},'📅');
+          const setValue=(ymd)=>{
+            const y=String(ymd||'').trim();
+            pick.value=y;
+            txt.value=y?fmt(y):'';
+          };
+          txt.addEventListener('change',e=>{
+            const ymd=parseDateInputToYMDGlobal(e.target.value);
+            if(ymd===null){setValue(val||'');return;}
+            setValue(ymd);
+            onChange(ymd);
+          });
+          pick.addEventListener('change',e=>{
+            const ymd=String(e.target.value||'').trim();
+            setValue(ymd);
+            onChange(ymd);
+          });
+          wrap.appendChild(txt);
+          wrap.appendChild(calWrap);
+          calWrap.appendChild(calBtn);
+          calWrap.appendChild(pick);
+          setValue(val);
+          return {el:wrap,setValue};
+        };
         const rebuildClosures=()=>{
           cloList.innerHTML='';
           cfg.warehouseClosures.forEach((c,ci)=>{
@@ -12241,15 +12337,23 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
             ));
             const row=h('div',{class:'form-row'});
             const startFmt=h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}},c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'');
+            const startCtrl=makeClosureDateControl(c.startDate||'',ymd=>{
+              c.startDate=ymd;
+              startFmt.textContent=c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'';
+            });
             row.appendChild(h('div',{class:'form-group'},
               h('label',{style:{fontSize:'12px'}},'מתאריך'),
-              (()=>{const i=h('input',{type:'text',value:fmt(c.startDate||''),placeholder:'dd-mm-yyyy',style:{direction:'ltr',textAlign:'left'}});i.addEventListener('change',e=>{const ymd=parseDateInputToYMDGlobal(e.target.value);if(ymd===null){i.value=fmt(c.startDate||'');return;} c.startDate=ymd; i.value=fmt(ymd); startFmt.textContent=c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'';});return i;})(),
+              startCtrl.el,
               startFmt
             ));
             const endFmt=h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}},c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'');
+            const endCtrl=makeClosureDateControl(c.endDate||'',ymd=>{
+              c.endDate=ymd;
+              endFmt.textContent=c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'';
+            });
             row.appendChild(h('div',{class:'form-group'},
               h('label',{style:{fontSize:'12px'}},'עד תאריך'),
-              (()=>{const i=h('input',{type:'text',value:fmt(c.endDate||''),placeholder:'dd-mm-yyyy',style:{direction:'ltr',textAlign:'left'}});i.addEventListener('change',e=>{const ymd=parseDateInputToYMDGlobal(e.target.value);if(ymd===null){i.value=fmt(c.endDate||'');return;} c.endDate=ymd; i.value=fmt(ymd); endFmt.textContent=c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'';});return i;})(),
+              endCtrl.el,
               endFmt
             ));
             card.appendChild(row);
