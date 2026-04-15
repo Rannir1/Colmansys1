@@ -27,7 +27,11 @@ html[data-ui="aurora"] .sidebar{
   background:linear-gradient(165deg,#0c1628 0%,#1a1030 55%,#0f172a 100%);
   border-left-color:rgba(125,211,252,0.15)
 }
-.modal-loan-prep{max-width:min(1040px,96vw)!important;width:100%}
+.modal-loan-prep{max-width:min(1080px,96vw)!important;width:100%}
+.loan-list-scroll{scrollbar-width:auto;scrollbar-color:var(--primary) rgba(255,255,255,0.12)}
+.loan-list-scroll::-webkit-scrollbar{width:12px}
+.loan-list-scroll::-webkit-scrollbar-track{background:rgba(255,255,255,0.08);border-radius:10px}
+.loan-list-scroll::-webkit-scrollbar-thumb{background:linear-gradient(180deg,var(--primary),#60a5fa);border-radius:10px;border:2px solid rgba(0,0,0,0)}
 html{height:100%;overflow:hidden;scrollbar-gutter:stable}
 body{font-family:'Heebo',Arial,sans-serif;direction:rtl;background:var(--bg);color:var(--text);height:100%;margin:0;overflow:hidden;display:flex;flex-direction:column}
 #root{flex:1;min-height:0;display:flex;flex-direction:column;min-width:0}
@@ -6803,7 +6807,7 @@ function openLoanDetail(o){
   const msgEl=h('div',{});
   const listEl=h('div',{});
   let listFilterQ='';
-  const listFilterInp=h('input',{type:'search',placeholder:'🔍 חיפוש פנימי ברשימת ההשאלה (שם / ברקוד)...',style:{width:'100%',marginBottom:'6px'}});
+  const listFilterInp=h('input',{type:'search',placeholder:'🔍 חיפוש פנימי (שם / ברקוד)...',style:{width:'100%',height:'34px',fontSize:'12px',padding:'4px 10px'}});
   const applyListFilter=()=>{
     const q=String(listFilterQ||'').trim().toLowerCase();
     const rows=[...listEl.children];
@@ -7139,7 +7143,7 @@ function openLoanDetail(o){
       // Changes are still auto-saved on every edit and when closing via buttons.
       onclick:e=>{if(e.target===overlay){}}
     });
-    const bcInpEl=h('input',{placeholder:'סרוק ברקוד — או הקלד 2+ תווים לחיפוש מהיר במלאי',style:{flex:1}});
+    const bcInpEl=h('input',{placeholder:'סרוק ברקוד / הקלד לחיפוש',style:{flex:1,height:'34px',fontSize:'12px',padding:'4px 10px'}});
     const bcSuggestEl=h('div',{style:{display:'none',marginTop:'6px',maxHeight:'min(340px,42vh)',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg2)',zIndex:5}});
     const hideBcSuggest=()=>{bcSuggestEl.innerHTML='';bcSuggestEl.style.display='none';};
     const invMatchesLoanSearch=(i,q)=>{
@@ -7234,7 +7238,7 @@ function openLoanDetail(o){
         body.appendChild(h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px',borderBottom:'1px solid var(--border)',fontSize:'13px'}},h('div',{},h('div',{style:{fontWeight:'700'}},`#${prev.orderNum||'—'} — ${u.name}`),h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}},`תאריך שאילה: ${fmt(prev.startDate)} ${prev.startTime||''}`)),h('button',{class:'btn btn-sm btn-primary',style:{fontSize:'11px'},onclick:()=>{let added=0,skipped=0; prevExtras.forEach(bc=>{if(extraItems.includes(bc)){skipped++;return;} const it=findByBarcode(state.inventory,bc); if(!it){skipped++;return;} if(it.journalId===camerasJ&&String(it.id)!==String(o.itemId)){skipped++;return;} extraItems.push(bc);added++;}); prevFree.forEach(txt=>{if(freeTextItems.includes(txt)){skipped++;return;} freeTextItems.push(txt);added++;}); if(listFilterQ){listFilterQ=''; if(listFilterInp) listFilterInp.value='';} if(['סופק','הוחזר חלקית'].includes(o.status)) autoSaveReturnsUi(); else autoSave(); renderList(); open=false; body.style.display='none'; toggleBtn.textContent='📋 העתק פריטים מהזמנה קודמת ▼'; msgEl.innerHTML=`<div class="alert alert-success">✓ הועתקו ${added} פריטים מהזמנה #${prev.orderNum||'—'}${skipped>0?' | '+skipped+' כפולים דולגו':''}</div>`; setTimeout(()=>msgEl.innerHTML='',3000);}},'העתק'))); });
       panel.appendChild(toggleBtn); panel.appendChild(body); return panel;
     })();
-    const freeTextInlineSection=(()=>{ if(lockLoanModal) return h('span',{}); const freeInp=h('input',{placeholder:'פריט ללא ברקוד...',style:{flex:1,minWidth:0}}); const addFree=()=>{const v=freeInp.value.trim(); if(!v) return; freeTextItems.push(v); freeInp.value=''; if(['סופק','הוחזר חלקית'].includes(o.status)) autoSaveReturnsUi(); else autoSave(); renderList();}; freeInp.addEventListener('keyup',e=>{if(e.key==='Enter')addFree();}); return h('div',{style:{minWidth:0}},h('div',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px'}},'פריטים ללא ברקוד'),h('div',{class:'flex gap-2'},freeInp,h('button',{class:'btn btn-secondary',onclick:addFree},'+ הוסף'))); })();
+    const freeTextInlineSection=(()=>{ if(lockLoanModal) return h('span',{}); const freeInp=h('input',{placeholder:'פריט ללא ברקוד...',style:{flex:1,minWidth:0,height:'34px',fontSize:'12px',padding:'4px 10px'}}); const addFree=()=>{const v=freeInp.value.trim(); if(!v) return; freeTextItems.push(v); freeInp.value=''; if(['סופק','הוחזר חלקית'].includes(o.status)) autoSaveReturnsUi(); else autoSave(); renderList();}; freeInp.addEventListener('keyup',e=>{if(e.key==='Enter')addFree();}); return h('div',{style:{minWidth:0}},h('div',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px'}},'פריטים ללא ברקוד'),h('div',{class:'flex gap-2'},freeInp,h('button',{class:'btn btn-secondary',style:{padding:'6px 10px',fontSize:'12px'},onclick:addFree},'+ הוסף'))); })();
     const modal=h('div',{class:'modal modal-lg modal-loan-prep'},
       h('h2',{},
         o.status==='לא נלקחה'?`הזמנה לא נלקחה — #${o.orderNum||'—'}`:
@@ -7270,7 +7274,7 @@ function openLoanDetail(o){
         ):o.status==='לא נלקחה'?h('div',{style:{fontSize:'13px',fontWeight:'700',color:'#a78bfa',marginTop:'6px',background:'rgba(167,139,250,0.12)',borderRadius:'6px',padding:'6px 10px'}},
           `📭 סומנה כ«לא נלקחה»${o.markedNotTakenDate?` · ${fmt(o.markedNotTakenDate)} ${o.markedNotTakenTime||''}`:''} — הציוד לא יצא מהמחסן; ההזמנה ננעלה לצפייה בלבד.`
         ):h('span',{}),
-        h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'3px'}},`${ORDER_PURPOSE_LABEL}: ${o.purpose||'—'}`),
+        h('div',{style:{fontSize:'13px',fontWeight:'800',marginTop:'6px',background:'rgba(16,185,129,0.12)',border:'1px solid rgba(16,185,129,0.35)',borderRadius:'6px',padding:'6px 8px'}},`${ORDER_PURPOSE_LABEL}: ${o.purpose||'—'}`),
         o.notes?h('div',{style:{fontSize:'12px',marginTop:'6px',background:'rgba(16,185,129,0.07)',border:'1px solid rgba(16,185,129,0.2)',borderRadius:'6px',padding:'5px 8px'}},
           h('span',{style:{color:'var(--success)',fontWeight:'700',fontSize:'11px'}},'📝 הערות מהמזמין למנהל: '),o.notes):h('span',{}),
         o.adminNotes?h('div',{style:{fontSize:'12px',marginTop:'6px',background:'rgba(167,139,250,0.08)',border:'1px solid rgba(167,139,250,0.25)',borderRadius:'6px',padding:'5px 8px'}},
@@ -7299,8 +7303,12 @@ function openLoanDetail(o){
           ?(o.status==='לא נלקחה'?'הזמנה ננעלה — לא נלקחה מהמחסן':'הזמנה ננעלה — הוחזרה במלואה')
           :(['סופק','הוחזר חלקית'].includes(o.status)?'✏️ עדכון רשימת ההשאלה (הוסף / הסר פריטים)':'ציוד נוסף להוספה (לפי ברקוד)')
       ),
-      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:'8px',marginBottom:'8px'}},
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:'8px',marginBottom:'6px'}},
         kitAdderSection,
+        h('div',{style:{minWidth:0}},
+          h('div',{style:{fontSize:'12px',fontWeight:'700',marginBottom:'6px'}},'🔍 חיפוש פנימי'),
+          listFilterInp
+        ),
         copyFromPrevSection
       ),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:'8px',marginBottom:'8px'}},
@@ -7314,11 +7322,7 @@ function openLoanDetail(o){
         ),
         freeTextInlineSection
       ),
-      h('details',{style:{marginTop:'10px',marginBottom:'4px',padding:'8px',border:'1px solid var(--border)',borderRadius:'8px',background:'var(--bg3)'}},
-        h('summary',{style:{cursor:'pointer',fontSize:'12px',fontWeight:'700',color:'var(--text2)'}},'🔍 חיפוש פנימי'),
-        h('div',{style:{marginTop:'8px'}},listFilterInp)
-      ),
-      h('div',{style:{marginTop:'6px',maxHeight:'min(520px,58vh)',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'6px 8px',background:'rgba(255,255,255,0.01)'}},
+      h('div',{class:'loan-list-scroll',style:{marginTop:'4px',maxHeight:'min(760px,74vh)',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'6px 8px 96px 8px',background:'rgba(255,255,255,0.01)'}},
         renderList(),
         listEl
       ),
@@ -7361,7 +7365,7 @@ function openLoanDetail(o){
           sigDataUrl?h('img',{src:sigDataUrl,alt:'חתימה דיגיטלית',style:{marginTop:'8px',maxWidth:'100%',maxHeight:'80px',border:'1px solid var(--border)',borderRadius:'6px',background:'#fff'}}):h('span',{})
         )
       ),
-      h('div',{class:'modal-footer',style:{flexWrap:'wrap',justifyContent:'flex-start',gap:'10px'}},
+      h('div',{class:'modal-footer',style:{position:'static',flexWrap:'wrap',justifyContent:'flex-start',gap:'8px',marginTop:'8px',paddingTop:'8px',paddingBottom:'8px'}},
         h('button',{class:'btn btn-secondary',onclick:closePrepModal},'סגור'),
         ...(!lockLoanModal && (state.user.role==='admin'||(o.userId===state.user.id&&['מחכה לאישור','אושרה'].includes(o.status))) ? [
           h('button',{class:'btn btn-secondary',onclick:()=>openEditOrderModal(o)},'✏️ עריכה'),
