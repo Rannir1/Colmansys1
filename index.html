@@ -2559,6 +2559,7 @@ function forceTimeInputs24(rootEl){
 function forceDateInputsHebrew(rootEl){
   try{
     (rootEl||document).querySelectorAll('input[type="date"]').forEach(i=>{
+      if(i.dataset.heDateProxy==='1') return;
       if(i.dataset.heDateBound==='1') return;
       i.dataset.heDateBound='1';
       const wrap=document.createElement('div');
@@ -4793,7 +4794,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
   const makeILDateControl=(val,onchange,extra={})=>{
     const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
     const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{width:'100%',direction:'ltr',textAlign:'left'}});
-    const pick=h('input',{type:'date',value:val,...extra,style:{position:'absolute',opacity:'0',pointerEvents:'none',width:'1px',height:'1px'}});
+    const pick=h('input',{type:'date',value:val,'data-he-date-proxy':'1',...extra,style:{position:'absolute',opacity:'0',pointerEvents:'none',width:'1px',height:'1px'}});
     const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 9px',fontSize:'14px',lineHeight:1},onclick:()=>{try{pick.showPicker();}catch(_){pick.click();}}},'📅');
     const minDate=String(extra&&extra.min?extra.min:'').trim();
     const setValue=(ymd)=>{
