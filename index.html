@@ -311,6 +311,25 @@ const load=(k,d)=>{
     return obj;
   }catch{return d}
 };
+const SK_INV_AUTO_BACKUPS='eqs_inventory_auto_backups';
+function backupInventoryBeforeRemoval(reason, itemsToRemove, inventorySnapshot){
+  try{
+    const prev=JSON.parse(localStorage.getItem(SK_INV_AUTO_BACKUPS)||'[]');
+    const rows=Array.isArray(prev)?prev:[];
+    const removedArr=Array.isArray(itemsToRemove)?itemsToRemove:[];
+    const invArr=Array.isArray(inventorySnapshot)?inventorySnapshot:[];
+    const entry={
+      id:'invbak_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
+      at:new Date().toISOString(),
+      reason:String(reason||'הוצאה מהמלאי'),
+      removedCount:removedArr.length,
+      removedBarcodes:removedArr.map(x=>String(x&&x.barcode||'').trim()).filter(Boolean),
+      inventory:invArr
+    };
+    rows.unshift(entry);
+    localStorage.setItem(SK_INV_AUTO_BACKUPS,JSON.stringify(rows.slice(0,12)));
+  }catch(e){console.warn('auto inventory backup',e);}
+}
 function eqsMigrateUntrackedStudentsFromStorage(){
   if(typeof EQS_DEMO!=='undefined'&&EQS_DEMO)return;
   try{
@@ -1219,19 +1238,17 @@ function sameInventoryBarcode(a,b){
 }
 
 /**
- * אותו ברקוד לא יכול להופיע ב־journalId שונה ברשומות מלאי נפרדות.
+ * אותו ברקוד לא יכול להופיע יותר מפעם אחת ברשומות מלאי.
  * @returns {{item:object}|null} פריט קיים בסתירה, או null אם אין
  */
 function findInventoryJournalBarcodeConflict(inventory, barcode, journalId, excludeItemId){
   const bc=String(barcode==null?'':barcode).trim();
   if(!bc) return null;
-  const wantJ=String(journalId==null?'':journalId).trim();
   for(const it of inventory||[]){
     if(!it) continue;
     if(excludeItemId!=null&&String(it.id)===String(excludeItemId)) continue;
     if(!sameInventoryBarcode(bc,it.barcode)) continue;
-    const otherJ=String(it.journalId==null?'':it.journalId).trim();
-    if(otherJ!==wantJ) return {item:it};
+    return {item:it};
   }
   return null;
 }
@@ -1240,7 +1257,19 @@ function alertInventoryJournalBarcodeConflict(conflict,journals){
   if(!conflict||!conflict.item) return;
   const jOther=String(conflict.item.journalId||'').trim();
   const jName=jOther?(journals||[]).find(j=>String(j.id)===jOther)?.name||jOther:'ללא יומן';
-  alert(`ברקוד זה כבר רשום ביומן «${jName}» — לא ניתן לשייך את אותו ברקוד ליומן אחר.`);
+  alert(`ברקוד זה כבר קיים במלאי (ביומן «${jName}»). ברקוד חייב להיות ייחודי.`);
+}
+/** בדיקת כפילות ברקוד בכל המערכת: מלאי פעיל + הוצאו מהמלאי */
+function findSystemBarcodeConflict(activeInventory, removedInventory, barcode, excludeActiveItemId){
+  const inActive=findInventoryJournalBarcodeConflict(activeInventory,barcode,'',excludeActiveItemId);
+  if(inActive) return {...inActive,source:'inventory'};
+  const bc=String(barcode==null?'':barcode).trim();
+  if(!bc) return null;
+  for(const it of (removedInventory||[])){
+    if(!it) continue;
+    if(sameInventoryBarcode(bc,it.barcode)) return {item:it,source:'removed'};
+  }
+  return null;
 }
 
 // Add in-app notification for a user
@@ -8121,6 +8150,7 @@ function renderInventory(){
     confirm2.className='btn btn-danger';confirm2.textContent='הוצא מהמלאי';
     confirm2.onclick=()=>{
       const reason=inp.value.trim()||'—';
+      backupInventoryBeforeRemoval(reason,[item],state.inventory);
       document.body.removeChild(ov);
       const removed=[...state.removed,{...item,removedAt:today(),reason}];
       const inv2=state.inventory.filter(i=>i.id!==item.id);
@@ -8133,7 +8163,7 @@ function renderInventory(){
   };
 
   const tableContainer=h('div',{});
-  const paginationTopContainer=h('div',{style:{direction:'ltr'}});
+  const paginationTopContainer=h('div',{});
   const paginationContainer=h('div',{});
   const summaryEl=h('p',{});
   const selectedIds=new Set();
@@ -8142,7 +8172,12 @@ function renderInventory(){
   const updateBulkPanel=()=>{
     bulkPanelEl.innerHTML='';
     if(selectedIds.size===0) return;
-    const fields={name:'',type:'',manufacturer:'',journalId:'',location:'',status:'',loanable:'',supplier:'',purchaseDate:''};
+    const fields={
+      name:'',type:'',manufacturer:'',journalId:'',location:'',status:'',loanable:'',supplier:'',
+      purchaseDate:'',warrantyDate:'',price:'',invoiceNum:'',notes:'',statusNote:'',
+      photoAction:'keep',photoData:'',
+      invoiceAction:'keep',invoiceData:'',invoiceName:''
+    };
     const mkInp=(lbl,key,el)=>h('div',{style:{display:'flex',flexDirection:'column',gap:'3px',minWidth:'120px'}},
       h('label',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'600'}},lbl),el
     );
@@ -8171,6 +8206,42 @@ function renderInventory(){
     const loanSel=h('select',{style:{fontSize:'12px'}});
     [['','— ללא שינוי —'],['true','כן — להשאלה'],['false','לא — להשאלה']].forEach(([v,l])=>loanSel.appendChild(h('option',{value:v},l)));
     loanSel.addEventListener('change',e=>fields.loanable=e.target.value);
+    const priceInp=h('input',{type:'number',step:'0.01',placeholder:'השאר ריק לשמירה',style:{fontSize:'12px'}});
+    priceInp.addEventListener('input',e=>fields.price=e.target.value);
+    const invNumInp=h('input',{placeholder:'השאר ריק לשמירה',style:{fontSize:'12px'}});
+    invNumInp.addEventListener('input',e=>fields.invoiceNum=e.target.value);
+    const warrantyInp=h('input',{type:'date',style:{fontSize:'12px'}});
+    warrantyInp.addEventListener('change',e=>fields.warrantyDate=e.target.value);
+    const notesInp=h('textarea',{placeholder:'השאר ריק לשמירה',style:{fontSize:'12px',minHeight:'44px'}});
+    notesInp.addEventListener('input',e=>fields.notes=e.target.value);
+    const statusNoteInp=h('textarea',{placeholder:'השאר ריק לשמירה',style:{fontSize:'12px',minHeight:'44px'}});
+    statusNoteInp.addEventListener('input',e=>fields.statusNote=e.target.value);
+    const photoFile=h('input',{type:'file',accept:'image/*',style:{display:'none'}});
+    const photoLbl=h('span',{style:{fontSize:'11px',color:'var(--text3)'}},'ללא שינוי');
+    photoFile.addEventListener('change',e=>{
+      const f=e.target.files&&e.target.files[0]; if(!f) return;
+      const rd=new FileReader();
+      rd.onload=ev=>{fields.photoAction='set';fields.photoData=ev.target.result||'';photoLbl.textContent='תמונה נבחרה';};
+      rd.readAsDataURL(f);
+    });
+    const photoCtrl=h('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap'}},
+      h('button',{class:'btn btn-sm btn-secondary',type:'button',onclick:()=>photoFile.click()},'📷 העלה תמונת פריט'),
+      h('button',{class:'btn btn-sm btn-secondary',type:'button',onclick:()=>{fields.photoAction='clear';fields.photoData='';photoLbl.textContent='תימחק בשמירה';}},'🗑 נקה תמונת פריט'),
+      photoLbl,photoFile
+    );
+    const invFile=h('input',{type:'file',accept:'image/*,.pdf',style:{display:'none'}});
+    const invLbl=h('span',{style:{fontSize:'11px',color:'var(--text3)'}},'ללא שינוי');
+    invFile.addEventListener('change',e=>{
+      const f=e.target.files&&e.target.files[0]; if(!f) return;
+      const rd=new FileReader();
+      rd.onload=ev=>{fields.invoiceAction='set';fields.invoiceData=ev.target.result||'';fields.invoiceName=f.name||'';invLbl.textContent='חשבונית נבחרה';};
+      rd.readAsDataURL(f);
+    });
+    const invCtrl=h('div',{style:{display:'flex',gap:'6px',flexWrap:'wrap'}},
+      h('button',{class:'btn btn-sm btn-secondary',type:'button',onclick:()=>invFile.click()},'📎 העלה חשבונית'),
+      h('button',{class:'btn btn-sm btn-secondary',type:'button',onclick:()=>{fields.invoiceAction='clear';fields.invoiceData='';fields.invoiceName='';invLbl.textContent='תימחק בשמירה';}},'🗑 נקה חשבונית'),
+      invLbl,invFile
+    );
 
     const applyBtn=h('button',{class:'btn btn-success',style:{alignSelf:'flex-end',whiteSpace:'nowrap'},onclick:()=>{
       let changed=0;
@@ -8187,6 +8258,15 @@ function renderInventory(){
         if(fields.loanable==='false') upd.loanable=false;
         if(fields.supplier&&fields.supplier.trim()) upd.supplier=fields.supplier.trim();
         if(fields.purchaseDate) upd.purchaseDate=fields.purchaseDate;
+        if(String(fields.price).trim()!=='') upd.price=parseFloat(fields.price)||0;
+        if(fields.invoiceNum&&fields.invoiceNum.trim()) upd.invoiceNum=fields.invoiceNum.trim();
+        if(fields.warrantyDate) upd.warrantyDate=fields.warrantyDate;
+        if(fields.notes&&fields.notes.trim()) upd.notes=fields.notes.trim();
+        if(fields.statusNote&&fields.statusNote.trim()) upd.statusNote=fields.statusNote.trim();
+        if(fields.photoAction==='set') upd.photo=fields.photoData||'';
+        if(fields.photoAction==='clear') upd.photo='';
+        if(fields.invoiceAction==='set'){ upd.invoiceFile=fields.invoiceData||''; upd.invoiceName=fields.invoiceName||''; }
+        if(fields.invoiceAction==='clear'){ upd.invoiceFile=''; upd.invoiceName=''; }
         changed++;
         return upd;
       });
@@ -8225,14 +8305,23 @@ function renderInventory(){
         mkInp('להשאלה','loanable',loanSel),
         mkInp('ספק','supplier',mkAcInp('supplier')),
         mkInp('תאריך רכישה','purchaseDate',(()=>{const i=h('input',{type:'date',style:{fontSize:'12px'}});i.addEventListener('change',e=>fields.purchaseDate=e.target.value);return i;})()),
+        mkInp('באחריות עד','warrantyDate',warrantyInp),
+        mkInp('מחיר רכישה','price',priceInp),
+        mkInp('מספר חשבונית','invoiceNum',invNumInp),
+        mkInp('הערות','notes',notesInp),
+        mkInp('הערת סטטוס','statusNote',statusNoteInp),
+        mkInp('תמונת פריט','photo',photoCtrl),
+        mkInp('תמונת חשבונית','invoiceFile',invCtrl),
         applyBtn,
         h('button',{class:'btn btn-danger',style:{alignSelf:'flex-end',whiteSpace:'nowrap'},onclick:()=>{
           const count=selectedIds.size;
           const names=[...selectedIds].slice(0,3).map(id=>state.inventory.find(i=>i.id===id)?.name||'—').join(', ')+(count>3?` ועוד ${count-3}`:'');
           confirmAction(`להוציא ${count} פריטים מהמלאי?\n${names}`,()=>{
             const reason='הוצאה קבוצתית';
+            const selectedRows=[...selectedIds].map(id=>state.inventory.find(i=>i.id===id)).filter(Boolean);
+            backupInventoryBeforeRemoval(reason,selectedRows,state.inventory);
             const now=new Date().toLocaleDateString('he-IL');
-            const toRemove=[...selectedIds].map(id=>state.inventory.find(i=>i.id===id)).filter(Boolean).map(i=>({...i,removedAt:now,removeReason:reason}));
+            const toRemove=selectedRows.map(i=>({...i,removedAt:now,removeReason:reason}));
             const inv2=state.inventory.filter(i=>!selectedIds.has(i.id));
             const removed=[...(state.removed||[]),...toRemove];
             setState({inventory:inv2,removed});
@@ -8470,6 +8559,29 @@ function renderItemModal(item){
     s.addEventListener('change',e=>form[key]=e.target.value);
     return h('div',{class:'form-group'},h('label',{},lbl),s);
   };
+  const barcodeWarnEl=h('div',{style:{fontSize:'11px',marginTop:'4px'}});
+  let barcodeInputEl=null;
+  const updateBarcodeLiveValidation=()=>{
+    const bc=String(form.barcode||'').trim();
+    if(!barcodeInputEl) return;
+    if(!bc){
+      barcodeWarnEl.textContent='';
+      barcodeInputEl.style.borderColor='';
+      return;
+    }
+    const c=findSystemBarcodeConflict(state.inventory,state.removed||[],bc,form.id||null);
+    if(c){
+      barcodeWarnEl.textContent=c.source==='removed'
+        ?'ברקוד קיים בפריט שהוצא מהמלאי — יש לשחזר אותו במקום ליצור חדש.'
+        :'ברקוד כבר קיים במלאי — לא ניתן לשמור כפילות.';
+      barcodeWarnEl.style.color='var(--danger)';
+      barcodeInputEl.style.borderColor='var(--danger)';
+    } else {
+      barcodeWarnEl.textContent='✓ הברקוד פנוי';
+      barcodeWarnEl.style.color='var(--success)';
+      barcodeInputEl.style.borderColor='var(--success)';
+    }
+  };
   const makeInventoryDateControl=(val,onchange,extra={})=>{
     const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
     const txt=h('input',{type:'text',value:toDateDisplay(val||''),placeholder:'dd-mm-yyyy',inputmode:'numeric',style:{direction:'ltr',textAlign:'left'}});
@@ -8508,7 +8620,19 @@ function renderItemModal(item){
         h('button',{class:'btn btn-secondary',style:{fontSize:'12px'},disabled:currentIdx<0||currentIdx>=sortedByBarcode.length-1,onclick:()=>navTo(1),title:'פריט הבא (ברקוד גדול יותר)'},'←')
       ):h('span',{})
     ),
-    h('div',{class:'form-row'},inp('ברקוד','barcode'),inp('שם הפריט *','name')),
+    h('div',{class:'form-row'},
+      (()=>{
+        const wrap=h('div',{class:'form-group'});
+        wrap.appendChild(h('label',{},'ברקוד'));
+        barcodeInputEl=h('input',{value:form.barcode||''});
+        barcodeInputEl.addEventListener('input',e=>{form.barcode=e.target.value;updateBarcodeLiveValidation();});
+        barcodeInputEl.addEventListener('change',e=>{form.barcode=e.target.value;updateBarcodeLiveValidation();});
+        wrap.appendChild(barcodeInputEl);
+        wrap.appendChild(barcodeWarnEl);
+        return wrap;
+      })(),
+      inp('שם הפריט *','name')
+    ),
     h('div',{class:'form-row'},inp('סוג פריט','type'),inp('יצרן','manufacturer')),
     h('div',{class:'form-row'},inp('מספר סידורי','serial'),
       sel('יומן הזמנות','journalId',[['','— ללא יומן (הוצא מיומן) —'],...journals.map(j=>[j.id,j.name])])
@@ -8769,6 +8893,12 @@ function renderItemModal(item){
       }},'↩ בטל שינויים')]:[] ),
       h('button',{class:'btn btn-primary',onclick:()=>{
         if(!form.name){alert('שם הפריט הוא שדה חובה');return}
+        const cLive=findSystemBarcodeConflict(state.inventory,state.removed||[],form.barcode,form.id||null);
+        if(cLive){
+          if(cLive.source==='removed'){alert('ברקוד זה קיים בפריט שהוצא מהמלאי. יש להחזירו למלאי ואז לערוך אותו.');}
+          else{alertInventoryJournalBarcodeConflict(cLive,journals);}
+          return;
+        }
         form.loanable=form.loanable==='false'?false:form.loanable==='true'?true:!!form.loanable;
         let inv2=[...state.inventory];
         const wantJ=String(form.journalId||'').trim();
@@ -8778,8 +8908,12 @@ function renderItemModal(item){
           const bc=parseInt((/^\d+$/.test(manualStart)?manualStart:genBarcode(inv2)),10);
           for(let i=0;i<batch;i++){
             const b=String(bc+i).padStart(6,'0');
-            const c=findInventoryJournalBarcodeConflict(inv2,b,wantJ,null);
-            if(c){alertInventoryJournalBarcodeConflict(c,journals);return;}
+            const c=findSystemBarcodeConflict(inv2,state.removed||[],b,null);
+            if(c){
+              if(c.source==='removed'){alert('ברקוד בטווח ההוספה קיים בפריט שהוצא מהמלאי. שחזר אותו במקום ליצור חדש.');}
+              else{alertInventoryJournalBarcodeConflict(c,journals);}
+              return;
+            }
           }
           for(let i=0;i<batch;i++){
             const b=String(bc+i).padStart(6,'0');
@@ -8788,8 +8922,12 @@ function renderItemModal(item){
             addedNow.push(nextItem);
           }
         } else {
-          const cRow=findInventoryJournalBarcodeConflict(inv2,form.barcode,wantJ,form.id||null);
-          if(cRow){alertInventoryJournalBarcodeConflict(cRow,journals);return;}
+          const cRow=findSystemBarcodeConflict(inv2,state.removed||[],form.barcode,form.id||null);
+          if(cRow){
+            if(cRow.source==='removed'){alert('ברקוד זה קיים בפריט שהוצא מהמלאי. יש להחזירו למלאי ואז לערוך אותו.');}
+            else{alertInventoryJournalBarcodeConflict(cRow,journals);}
+            return;
+          }
           const exists=inv2.find(i=>i.id===form.id);
           const nextRow={...form,loanable:form.loanable};
           if(exists){
@@ -8810,6 +8948,7 @@ function renderItemModal(item){
       }},`שמור${!item.id&&batch>1?` (${batch})`:''}`),
     )
   );
+  setTimeout(updateBarcodeLiveValidation,0);
   overlay.appendChild(modal);return overlay;
 }
 
@@ -9001,6 +9140,22 @@ function renderStockCount(){
     };
 
     let filterJournal='all', filterShow='all', filterSearch='';
+    const removeUncountedItems=(itemsToRemove,reasonLabel)=>{
+      if(!itemsToRemove.length){alert('אין פריטים מתאימים להוצאה.');return;}
+      if(!confirm(`אזהרה: פעולה זו תוציא ${itemsToRemove.length} פריטים מהמלאי.\nסיבה: ${reasonLabel}\n\nלהמשיך?`)) return;
+      if(!confirm('אישור סופי: בטוח/ה שברצונך לבצע הוצאה מהמלאי לפריטים שלא נספרו?')) return;
+      backupInventoryBeforeRemoval(reasonLabel,itemsToRemove,state.inventory);
+      const ts=localDateISO(new Date());
+      const idSet=new Set(itemsToRemove.map(x=>String(x.id)));
+      const removedBatch=itemsToRemove.map(i=>({...i,removedAt:ts,removeReason:reasonLabel}));
+      const inv2=state.inventory.filter(i=>!idSet.has(String(i.id)));
+      const removed2=[...(state.removed||[]),...removedBatch];
+      Object.keys(counted).forEach(id=>{if(idSet.has(String(id))) delete counted[id];});
+      saveCount();
+      setState({inventory:inv2,removed:removed2});
+      save(SK.inventory,inv2);save(SK.removed,removed2);
+      alert(`✓ הוצאו מהמלאי ${removedBatch.length} פריטים`);
+    };
     const getFiltered=()=>inventory.filter(i=>{
       if(filterJournal!=='all'&&i.journalId!==filterJournal) return false;
       if(filterShow==='counted'&&!counted[i.id]) return false;
@@ -9035,7 +9190,7 @@ function renderStockCount(){
       tbl.appendChild(h('thead',{},h('tr',{},
         h('th',{style:{width:'44px'}},'✓'),
         h('th',{},'ברקוד'),h('th',{},'שם פריט'),h('th',{},'יומן'),h('th',{},'מיקום'),
-        h('th',{},'סטטוס'),h('th',{},'נספר בתאריך'),h('th',{},'הערה')
+        h('th',{},'סטטוס'),h('th',{},'נספר בתאריך'),h('th',{},'הערה'),h('th',{},'פעולות')
       )));
       const tbody=h('tbody',{});
       f.forEach(item=>{
@@ -9059,7 +9214,8 @@ function renderStockCount(){
           h('td',{style:{fontSize:'12px'}},item.location||'—'),
           h('td',{},statusBadge(item.status)),
           h('td',{style:{fontSize:'11px',color:isCounted?'var(--success)':'var(--text3)'}},isCounted?`${fmt(counted[item.id].date)} ${counted[item.id].time}`:'—'),
-          h('td',{style:{minWidth:'120px'}},isCounted?noteInp:h('span',{style:{color:'var(--text3)',fontSize:'12px'}},'—'))
+          h('td',{style:{minWidth:'120px'}},isCounted?noteInp:h('span',{style:{color:'var(--text3)',fontSize:'12px'}},'—')),
+          h('td',{},isCounted?h('span',{style:{fontSize:'11px',color:'var(--text3)'}},'—'):h('button',{class:'btn btn-sm btn-danger',onclick:()=>removeUncountedItems([item],'לא נספר בספירת מלאי')},'הוצא'))
         ));
       });
       tbl.appendChild(tbody);tableEl.appendChild(tbl);
@@ -9118,6 +9274,10 @@ function renderStockCount(){
             saveCount();refresh();
           }},'✓ סמן הכל'),
           h('button',{class:'btn btn-danger',onclick:()=>{
+            const f=getFiltered().filter(it=>!counted[it.id]);
+            removeUncountedItems(f,'לא נספר בספירת מלאי');
+          }},'🗑 הוצא "לא נספרו" (מסונן)'),
+          h('button',{class:'btn btn-danger',onclick:()=>{
             if(!confirm('לסגור ספירה זו? היא תישמר בהיסטוריה.'))return;
             const now=new Date();
             const h2=loadHistory().map(s=>s.id===activeSessionId?{...s,closedAt:now.toISOString(),closedBy:state.user?.id||''}:s);
@@ -9148,7 +9308,7 @@ function renderStockCount(){
     const totalCounted=Object.keys(counted).filter(id=>inventory.find(i=>i.id===id)).length;
     const uncounted=inventory.filter(i=>!counted[i.id]);
     const countedItems=inventory.filter(i=>counted[i.id]);
-    let filterShow='all', filterJournal='all';
+    let filterShow='all', filterJournal='all', filterSearch='';
 
     const exportCSV=(items,label)=>{
       const csv=[['ברקוד','שם פריט','סוג','יומן','מיקום','נספר','תאריך ספירה','שעה','הערה'],
@@ -9164,7 +9324,16 @@ function renderStockCount(){
     const refreshTable=()=>{
       tableEl.innerHTML='';
       const base=filterShow==='counted'?countedItems:filterShow==='uncounted'?uncounted:inventory;
-      const f=base.filter(i=>filterJournal==='all'||i.journalId===filterJournal);
+      const f=base.filter(i=>{
+        if(filterJournal!=='all'&&i.journalId!==filterJournal) return false;
+        if(filterSearch){
+          const q=String(filterSearch).toLowerCase();
+          const jn=(journals.find(j=>j.id===i.journalId)?.name||'').toLowerCase();
+          const hay=`${i.barcode||''} ${i.name||''} ${i.type||''} ${i.location||''} ${jn}`.toLowerCase();
+          if(!hay.includes(q)) return false;
+        }
+        return true;
+      });
       if(!f.length){tableEl.appendChild(h('div',{class:'empty'},h('p',{},'אין פריטים')));return;}
       const tbl=h('table',{});
       tbl.appendChild(h('thead',{},h('tr',{},h('th',{},'ברקוד'),h('th',{},'שם פריט'),h('th',{},'יומן'),h('th',{},'מיקום'),h('th',{},'נספר'),h('th',{},'תאריך ספירה'),h('th',{},'הערה'))));
@@ -9214,7 +9383,8 @@ function renderStockCount(){
               h('button',{class:`tab${filterShow===v?' active':''}`,onclick:()=>{filterShow=v;refreshTable();}},l)
             )
           ),
-          mkSel([['all','כל היומנים'],...journals.map(j=>[j.id,j.name])],v=>filterJournal=v)
+          mkSel([['all','כל היומנים'],...journals.map(j=>[j.id,j.name])],v=>filterJournal=v),
+          (()=>{const i=h('input',{placeholder:'חיפוש בנספרו/לא נספרו...',style:{maxWidth:'220px'}});i.addEventListener('input',e=>{filterSearch=e.target.value;refreshTable();});return i;})()
         ),
         tableEl
       )
@@ -9369,7 +9539,17 @@ function renderJournalInventoryProbe(){
 // ============================================================
 function renderRemovedInventory(){
   const {removed,journals} = state;
+  let removedSearch=String(state.removedSearch||'').trim();
   const summaryEl=h('p',{style:{color:'var(--text3)',fontSize:'13px'}},`סה"כ ${removed.length} פריטים שהוצאו מהמלאי`);
+  const rowMatchesRemovedSearch=(item,q)=>{
+    const qq=String(q||'').trim().toLowerCase();
+    if(!qq) return true;
+    const jName=journals.find(j=>j.id===item.journalId)?.name||'';
+    const hay=[
+      item.barcode,item.name,item.type,jName,item.removedAt,item.reason,item.removeReason,item.manufacturer,item.supplier,item.location,item.serial
+    ].map(v=>String(v||'').toLowerCase()).join(' ');
+    return hay.includes(qq);
+  };
 
   const exportRemoved=()=>{
     const rows=[...removed].reverse();
@@ -9676,9 +9856,13 @@ function renderRemovedInventory(){
     h('th',{},'תאריך הוצאה'),h('th',{},'סיבה'),h('th',{},'פעולות')
   )));
   const tbody=h('tbody',{});
-  [...removed].reverse().forEach(item=>{
+  const visibleRemoved=[...removed].reverse().filter(item=>rowMatchesRemovedSearch(item,removedSearch));
+  summaryEl.textContent=`סה"כ ${removed.length} פריטים שהוצאו מהמלאי | מוצגים: ${visibleRemoved.length}`;
+  visibleRemoved.forEach(item=>{
     const jName=journals.find(j=>j.id===item.journalId)?.name||'—';
     const restoreBtn=h('button',{class:'btn btn-sm btn-success',onclick:()=>{
+      const c=findInventoryJournalBarcodeConflict(state.inventory,item.barcode,item.journalId,null);
+      if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
       if(!confirm(`להחזיר את "${item.name}" למלאי?`)) return;
       const {removedAt,reason,removeReason,...restored}=item;
       const inv2=[...state.inventory,{...restored,status:'תקין'}];
@@ -9686,6 +9870,17 @@ function renderRemovedInventory(){
       setState({inventory:inv2,removed:removed2});
       save(SK.inventory,inv2);save(SK.removed,removed2);
     }},'↩ החזר למלאי');
+    const restoreAndEditBtn=h('button',{class:'btn btn-sm btn-secondary',onclick:()=>{
+      const c=findInventoryJournalBarcodeConflict(state.inventory,item.barcode,item.journalId,null);
+      if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
+      if(!confirm(`להחזיר את "${item.name}" ולפתוח מיד לעריכה?`)) return;
+      const {removedAt,reason,removeReason,...restored}=item;
+      const restoredItem={...restored,status:'תקין'};
+      const inv2=[...state.inventory,restoredItem];
+      const removed2=state.removed.filter(r=>r.id!==item.id);
+      setState({inventory:inv2,removed:removed2,modal:()=>renderItemModal({...restoredItem})});
+      save(SK.inventory,inv2);save(SK.removed,removed2);
+    }},'↩✏ שחזר וערוך');
     tbody.appendChild(h('tr',{},
       h('td',{},h('code',{style:{fontSize:'11px'}},item.barcode)),
       h('td',{style:{fontWeight:'600'}},item.name),
@@ -9693,12 +9888,15 @@ function renderRemovedInventory(){
       h('td',{style:{fontSize:'12px'}},jName),
       h('td',{style:{fontSize:'12px'}},item.removedAt?fmt(item.removedAt):'—'),
       h('td',{style:{fontSize:'12px',maxWidth:'200px'}},item.reason||item.removeReason||'—'),
-      h('td',{},restoreBtn)
+      h('td',{},h('div',{class:'flex gap-2'},restoreBtn,restoreAndEditBtn))
     ));
   });
   tbl.appendChild(tbody);
   return h('div',{},
     h('div',{class:'page-header'},h('h1',{},'פריטים שהוצאו מהמלאי'),summaryEl,tools),
+    h('div',{class:'search-bar'},
+      (()=>{const i=h('input',{placeholder:'חיפוש בפריטים שהוצאו (ברקוד, שם, ספק, סיבה...)',value:removedSearch});i.addEventListener('input',e=>{state.removedSearch=e.target.value;render();});return i;})()
+    ),
     h('div',{class:'card'},
       h('div',{
         class:'table-wrap',
@@ -9708,6 +9906,8 @@ function renderRemovedInventory(){
           overflowX:'auto',
           border:'1px solid var(--border)',
           borderRadius:'10px',
+          scrollbarWidth:'auto',
+          scrollbarColor:'var(--accent) rgba(148,163,184,0.22)',
           WebkitOverflowScrolling:'touch'
         }
       }, tbl)
