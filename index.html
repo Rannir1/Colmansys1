@@ -3087,22 +3087,6 @@ function renderApp(){
         const rows=[];
         const _bb=renderBroadcastBanner();
         if(_bb)rows.push(_bb);
-        if(cloudSyncEnabled())rows.push(h('div',{class:'alert alert-success',style:{fontSize:'12px',lineHeight:1.5,padding:'8px 12px',marginBottom:'12px'}},
-          h('strong',{},'סנכרון ענן פעיל: '),
-          'הזמנות, מלאי ויומנים נשמרים ונשלחים לענן אוטומטית אחרי כל שינוי, ומתעדכנים אצל כולם (Realtime + בדיקה כל ~10 שנ׳). ',
-          h('strong',{},'אין צורך ללחוץ'),
-          ' על «משיכה» או «דחיפה» בשגרה — הכפתורים האלה רק לתקלות.'
-        ));
-        if(isAdmin){
-          const bk=getBackupReminderBannerInfo();
-          if(bk.overdue)rows.push(h('div',{class:'alert alert-info',style:{fontSize:'12px',lineHeight:1.55,padding:'10px 14px',marginBottom:'12px',border:'1px solid rgba(245,158,11,0.45)',background:'rgba(245,158,11,0.08)'}},
-            h('strong',{},'גיבוי JSON: '),
-            `לא סומן גיבוי מלא מהכפתור במשך יותר מ־${bk.days} ימים (או מעולם). `,
-            h('span',{style:{color:'var(--text2)'}},`אחרון: ${bk.lastLabel}. `),
-            'דפדפנים לא יכולים להוריד קובץ ברקע — מומלץ ללחוץ «גבה הכל» בהגדרות או לתזמן התראה ביומן.',
-            h('button',{class:'btn btn-sm btn-primary',style:{marginRight:'10px',marginTop:'8px'},onclick:()=>setState({page:'settings'})},'פתח הגדרות — גיבוי')
-          ));
-        }
         return rows;
       })(),
       ...(()=>{
@@ -3534,6 +3518,13 @@ function renderJournals(){
         return wrap;
       })()
     ),
+    h('div',{class:'flex gap-3',style:{flexWrap:'wrap',justifyContent:'flex-end',margin:'-6px 0 8px'}},
+      ...[['מחכה לאישור','#3b82f6'],['אושרה','#10b981'],['ההזמנה מוכנה','#06b6d4'],['סופק','#ef4444'],['הוחזר חלקית','#f97316'],['הוחזר','#db2777'],['לא נלקחה','#a78bfa']].map(([lbl,col])=>
+        h('div',{class:'flex items-center gap-2',style:{fontSize:'12px',color:'var(--text2)'}},
+          h('div',{style:{width:'12px',height:'12px',borderRadius:'3px',background:col}}),lbl
+        )
+      )
+    ),
     h('div',{class:'card journal-timeline-card',style:{overflowX:'auto'}},
       // Header row with hour labels
       h('div',{class:'journal-timeline-grid journal-timeline-grid--head'},
@@ -3605,14 +3596,7 @@ function renderJournals(){
           })
         )
     ),
-    h('div',{class:'flex gap-3 mt-3',style:{flexWrap:'wrap'}},
-      ...[['מחכה לאישור','#3b82f6'],['אושרה','#10b981'],['ההזמנה מוכנה','#06b6d4'],['סופק','#ef4444'],['הוחזר חלקית','#f97316'],['הוחזר','#db2777'],['לא נלקחה','#a78bfa']].map(([lbl,col])=>
-        h('div',{class:'flex items-center gap-2',style:{fontSize:'12px',color:'var(--text2)'}},
-          h('div',{style:{width:'12px',height:'12px',borderRadius:'3px',background:col}}),lbl
-        )
-      ),
-      h('div',{style:{fontSize:'11px',color:'var(--text3)',marginRight:'8px'}},'💡 לחץ על משבצת ריקה לפתיחת הזמנה')
-    )
+    h('span',{})
   );
 }
 
@@ -12457,7 +12441,7 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
           h('strong',{},'תזכורת בממשק: '),
           `נשמר מקומית לאחר לחיצה על «גבה הכל» בלבד. אחרון: ${inf.lastLabel}. סף ההתראה: כל ${inf.days} ימים (ניתן לשנות בטאב «מלאי» בהגדרות).`);
       })(),
-      h('p',{class:'text-sm text-muted mb-3',style:{lineHeight:1.55}},EQS_PUBLIC_DEPLOY?'בגרסת פרסום: גיבוי/שחזור מקובץ — בלי משתמשים/סטודנטים (לא נשמרים בקובץ ולא נטענים). רק הזמנות, מלאי, יומנים והגדרות.':'ללא סנכרון ענן (טאב «☁️ סנכרון»): הנתונים נשמרים רק בדפדפן של המכשיר. עם סנכרון Supabase פעיל — כל המכשירים משתפים אותו מצב אוטומטית; עדיין מומלץ גיבוי JSON מדי פעם. גיבוי «הזמנות בלבד» לא כולל יומנים. ייצוא CSV לדוחות (הזמנות / מלאי / ספירות) זמין במסכים הרלוונטיים — קובץ Excel יכול לפתוח CSV עם BOM.'),
+      h('span',{}),
       h('div',{class:'flex gap-3',style:{flexWrap:'wrap'}},
         h('button',{class:'btn btn-primary',onclick:()=>{
           const backup={orders:state.orders,exportedAt:new Date().toISOString(),version:2};
