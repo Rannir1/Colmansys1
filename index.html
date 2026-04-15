@@ -949,7 +949,7 @@ try {
       if(!raw) return;
       const s=JSON.parse(raw);
       let ch=false;
-      if(s.warehouseEnforceWeeklyHours===undefined){s.warehouseEnforceWeeklyHours=false;ch=true;}
+      if(s.warehouseEnforceWeeklyHours===undefined){s.warehouseEnforceWeeklyHours=true;ch=true;}
       if(!Array.isArray(s.warehouseWeeklyHours)||s.warehouseWeeklyHours.length!==7){
         s.warehouseWeeklyHours=Array.from({length:7},()=>({enabled:true,slots:[{from:'08:00',to:'18:00'}]}));
         ch=true;
@@ -1383,9 +1383,9 @@ function normalizeWarehouseWeeklyHours(arr){
   });
 }
 function getWarehouseRuntimeConfig(){
-  const s=state.settings||{};
+  const s=load(SK.settings,state.settings||{})||{};
   return{
-    enforceWeekly:!!s.warehouseEnforceWeeklyHours,
+    enforceWeekly:true,
     weekly:normalizeWarehouseWeeklyHours(s.warehouseWeeklyHours),
     closures:(Array.isArray(s.warehouseClosures)?s.warehouseClosures:[]).filter(c=>c&&c.startDate&&c.endDate&&c.active!==false)
   };
@@ -1436,9 +1436,7 @@ function warehouseStudentClosureViolation(startDate,endDate,closures,opts){
   return null;
 }
 function warehouseStudentRestrictionsApply(settings){
-  const s=settings||{};
-  if(s.warehouseEnforceWeeklyHours) return true;
-  return(s.warehouseClosures||[]).some(c=>c&&c.startDate&&c.endDate&&c.active!==false);
+  return true;
 }
 function warehouseEscapeHtml(t){
   return String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -2570,6 +2568,23 @@ function forceDateInputsHebrew(rootEl){
         const txt=v?fmt(v):'';
         i.title=txt?`תאריך: ${txt}`:'';
         i.setAttribute('aria-label',txt?`תאריך ${txt}`:'תאריך');
+        let tag=null;
+        if(i.dataset.heDateTagId){
+          tag=document.getElementById(i.dataset.heDateTagId)||null;
+        }
+        if(!tag){
+          tag=document.createElement('div');
+          tag.id='eqsDateTag_'+Math.random().toString(36).slice(2,10);
+          i.dataset.heDateTagId=tag.id;
+          tag.style.fontSize='11px';
+          tag.style.color='var(--text3)';
+          tag.style.marginTop='3px';
+          tag.style.lineHeight='1.35';
+          tag.style.direction='rtl';
+          tag.style.textAlign='right';
+          i.insertAdjacentElement('afterend',tag);
+        }
+        tag.textContent=txt?`תצוגה ישראלית: ${txt}`:'';
       };
       setMeta();
       if(i.dataset.heDateBound==='1') return;
@@ -4545,7 +4560,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     if(!warehouseStudentRestrictionsApply(state.settings)){warehousePreviewEl.innerHTML='';return;}
     const s=state.settings||{};
     const hasC=(s.warehouseClosures||[]).some(c=>c&&c.startDate&&c.endDate&&c.active!==false);
-    const enf=!!s.warehouseEnforceWeeklyHours;
+    const enf=true;
     const cfg=getWarehouseRuntimeConfig();
     const parts=[];
     const hdr='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-top:4px;margin-bottom:6px">מגבלות מחסן (תצוגה מקדימה לפני השליחה)</div>';
