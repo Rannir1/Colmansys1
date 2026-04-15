@@ -8133,6 +8133,7 @@ function renderInventory(){
   };
 
   const tableContainer=h('div',{});
+  const paginationTopContainer=h('div',{style:{direction:'ltr'}});
   const paginationContainer=h('div',{});
   const summaryEl=h('p',{});
   const selectedIds=new Set();
@@ -8253,7 +8254,8 @@ function renderInventory(){
     const inv=state.inventory;
     const jrns=state.journals;
     const filtered=inv.filter(i=>{
-      if(curJournal!=='all'&&i.journalId!==curJournal) return false;
+      if(curJournal!=='all'&&curJournal!=='__none__'&&i.journalId!==curJournal) return false;
+      if(curJournal==='__none__'&&String(i.journalId||'')!=='') return false;
       if(curStatus!=='all'&&i.status!==curStatus) return false;
       if(search&&!invAdminItemMatchesSearch(i,jrns,search)) return false;
       if(curCounted!=='all'){
@@ -8324,8 +8326,8 @@ function renderInventory(){
     tbl.appendChild(tbody);
     tableContainer.appendChild(h('div',{class:'table-wrap'},tbl));
 
-    paginationContainer.innerHTML='';
-    if(pages>1){
+    const buildPaginationNode=()=>{
+      if(pages<=1) return null;
       const btns=[];
       const prev=h('button',{class:`page-btn${curPage<=1?' disabled':''}`,disabled:curPage<=1},'→');
       prev.addEventListener('click',()=>{if(curPage>1){state.invPage=curPage-1;rebuildTable();}});
@@ -8340,7 +8342,15 @@ function renderInventory(){
       next.addEventListener('click',()=>{if(curPage<pages){state.invPage=curPage+1;rebuildTable();}});
       btns.push(next);
       btns.push(h('span',{style:{fontSize:'12px',color:'var(--text3)',marginRight:'8px'}},`עמוד ${curPage} מתוך ${pages}`));
-      paginationContainer.appendChild(h('div',{class:'pagination'},...btns));
+      return h('div',{class:'pagination'},...btns);
+    };
+    paginationTopContainer.innerHTML='';
+    paginationContainer.innerHTML='';
+    if(pages>1){
+      const topNode=buildPaginationNode();
+      const bottomNode=buildPaginationNode();
+      if(topNode) paginationTopContainer.appendChild(topNode);
+      if(bottomNode) paginationContainer.appendChild(bottomNode);
     }
   };
 
@@ -8396,7 +8406,7 @@ function renderInventory(){
         const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));a.download='inventory.csv';a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);
       }},'📥 ייצא CSV')
     ),
-    h('div',{class:'card'},tableContainer,paginationContainer)
+    h('div',{class:'card'},paginationTopContainer,tableContainer,paginationContainer)
   );
 }
 
@@ -8764,7 +8774,8 @@ function renderItemModal(item){
         const wantJ=String(form.journalId||'').trim();
         const addedNow=[];
         if(!item.id&&batch>1){
-          const bc=parseInt(genBarcode(inv2));
+          const manualStart=String(form.barcode||'').trim();
+          const bc=parseInt((/^\d+$/.test(manualStart)?manualStart:genBarcode(inv2)),10);
           for(let i=0;i<batch;i++){
             const b=String(bc+i).padStart(6,'0');
             const c=findInventoryJournalBarcodeConflict(inv2,b,wantJ,null);
@@ -8785,7 +8796,7 @@ function renderItemModal(item){
             recordItemFieldEdits(item.id,originalForm,nextRow,{userId:state.user?.id,userName:state.user?.name||''});
             inv2=inv2.map(i=>i.id===form.id?nextRow:i);
           } else {
-            const nextItem={...form,id:form.barcode||genId()};
+            const nextItem={...form,id:genId()};
             inv2.push(nextItem);
             addedNow.push(nextItem);
           }
