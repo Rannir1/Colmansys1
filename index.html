@@ -6819,11 +6819,11 @@ function openLoanDetail(o){
   listFilterInp.addEventListener('input',e=>{listFilterQ=e.target.value;applyListFilter();});
   const renderList=()=>{
     listEl.innerHTML='';
-    const listIsWide=(window.innerWidth||0)>=1180;
+    const vw=(window.innerWidth||0);
     listEl.style.display='grid';
-    listEl.style.gridTemplateColumns=listIsWide?'1fr 1fr':'1fr';
-    listEl.style.columnGap='10px';
-    listEl.style.rowGap='6px';
+    listEl.style.gridTemplateColumns=vw>=1400?'1fr 1fr 1fr':(vw>=980?'1fr 1fr':'1fr');
+    listEl.style.columnGap='8px';
+    listEl.style.rowGap='3px';
     listEl.style.alignItems='start';
     const appendListRow=(el,fullWidth)=>{
       if(!el) return;
@@ -6871,7 +6871,7 @@ function openLoanDetail(o){
       const mainBlocked=blockedOrderByItemId.get(String(o.itemId));
       if(mainBlocked){
         const bu=state.users.find(u=>u.id===mainBlocked.userId)||{name:getUserName(mainBlocked.userId)};
-        appendListRow(h('div',{style:{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:'8px',padding:'10px 12px',marginBottom:'10px'}},
+        appendListRow(h('div',{style:{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:'8px',padding:'7px 9px',marginBottom:'4px'}},
           h('div',{style:{fontSize:'12px',fontWeight:'800',color:'var(--danger)',marginBottom:'4px'}},'⚠️ הפריט הראשי עדיין לא הוחזר'),
           h('div',{style:{fontSize:'11px',color:'var(--text2)'}},`לא הוחזר מהזמנה #${mainBlocked.orderNum||'—'} · ${bu?.name||'—'} · אמור לחזור ${hebrewDate(mainBlocked.endDate)} ${mainBlocked.endTime||''}`)
         ),true);
@@ -6879,8 +6879,8 @@ function openLoanDetail(o){
     }
     if(['סופק','הוחזר חלקית'].includes(o.status)&&!isMainLineReturned()){
       const mainIt=inventory.find(i=>i.id===o.itemId);
-      appendListRow(h('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'6px 0',borderBottom:'1px solid var(--border)',background:'rgba(99,102,241,0.06)'}},
-        h('span',{style:{fontSize:'13px',flex:1,fontWeight:'600'}},mainIt?.name||o.itemName||'—',
+      appendListRow(h('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'3px 0',borderBottom:'1px solid var(--border)',background:'rgba(99,102,241,0.06)'}},
+        h('span',{style:{fontSize:'12px',flex:1,fontWeight:'600',lineHeight:'1.25'}},mainIt?.name||o.itemName||'—',
           h('span',{style:{fontSize:'11px',color:'var(--text3)',fontWeight:'400',marginRight:'6px'}},' (פריט ראשי)'),
           h('span',{style:{fontSize:'11px',color:'var(--text3)'}},mainIt?.barcode||o.itemBarcode||'')
         ),
@@ -6899,8 +6899,8 @@ function openLoanDetail(o){
       const warnTxt=blockedOrder
         ? `⚠️ לא הוחזר: הזמנה #${blockedOrder.orderNum||'—'} · ${bu?.name||'—'} · אמור לחזור ${hebrewDate(blockedOrder.endDate)} ${blockedOrder.endTime||''}`
         : '';
-      appendListRow(h('div',{style:{display:'flex',alignItems:'flex-start',gap:'8px',padding:'6px 0',borderBottom:'1px solid var(--border)',background:blockedOrder?'rgba(239,68,68,0.08)':''}},
-        h('div',{style:{fontSize:'13px',flex:1,minWidth:0}},
+      appendListRow(h('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'3px 0',borderBottom:'1px solid var(--border)',background:blockedOrder?'rgba(239,68,68,0.08)':''}},
+        h('div',{style:{fontSize:'12px',flex:1,minWidth:0,lineHeight:'1.25'}},
           h('div',{},it?it.name:`ברקוד: ${bc} (לא נמצא)`),
           blockedOrder?h('div',{style:{fontSize:'11px',color:'var(--danger)',marginTop:'2px',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},warnTxt):null
         ),
@@ -6916,8 +6916,8 @@ function openLoanDetail(o){
     });
     // Active free-text items
     freeTextItems.forEach((txt,idx)=>{
-      appendListRow(h('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'6px 0',borderBottom:'1px solid var(--border)'}},
-        h('span',{style:{fontSize:'13px',flex:1,fontStyle:'italic'}},`📝 ${txt}`),
+      appendListRow(h('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'3px 0',borderBottom:'1px solid var(--border)'}},
+        h('span',{style:{fontSize:'12px',flex:1,fontStyle:'italic',lineHeight:'1.25'}},`📝 ${txt}`),
         lockLoanModal?null:
         ['סופק','הוחזר חלקית'].includes(o.status)
           ? h('button',{class:'btn btn-sm btn-warning',style:{fontSize:'11px'},onclick:()=>{
@@ -6929,10 +6929,10 @@ function openLoanDetail(o){
     });
     // Returned items (with undo)
     if(returnedItems.length>0){
-      appendListRow(h('div',{style:{marginTop:'10px',marginBottom:'4px',fontSize:'11px',fontWeight:'700',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.5px'}},'הוחזרו:'),true);
+      appendListRow(h('div',{style:{marginTop:'4px',marginBottom:'2px',fontSize:'10px',fontWeight:'700',color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.4px'}},'הוחזרו:'),true);
       returnedItems.forEach((ri,idx)=>{
-        appendListRow(h('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'5px 0',borderBottom:'1px solid var(--border)',opacity:'0.6'}},
-          h('span',{style:{fontSize:'13px',flex:1,textDecoration:'line-through',color:'var(--text3)'}},
+        appendListRow(h('div',{style:{display:'flex',alignItems:'center',gap:'6px',padding:'3px 0',borderBottom:'1px solid var(--border)',opacity:'0.6'}},
+          h('span',{style:{fontSize:'12px',flex:1,textDecoration:'line-through',color:'var(--text3)',lineHeight:'1.25'}},
             ri.name,
             ri.type==='main'?h('span',{style:{fontSize:'10px',color:'var(--text3)',marginRight:'6px'}},' (פריט ראשי)'):null,
             ri.type==='barcode'?h('span',{style:{fontSize:'11px',color:'var(--text3)'}},` · ברקוד: ${ri.val}`):null,
@@ -7323,7 +7323,7 @@ function openLoanDetail(o){
         ),
         freeTextInlineSection
       ),
-      h('div',{class:'loan-list-scroll',style:{marginTop:'4px',maxHeight:'min(760px,74vh)',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'6px 8px 96px 8px',background:'rgba(255,255,255,0.01)'}},
+      h('div',{class:'loan-list-scroll',style:{marginTop:'4px',maxHeight:'min(760px,74vh)',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'4px 6px 14px 6px',background:'rgba(255,255,255,0.01)'}},
         renderList(),
         listEl
       ),
