@@ -2559,42 +2559,69 @@ function forceTimeInputs24(rootEl){
 function forceDateInputsHebrew(rootEl){
   try{
     (rootEl||document).querySelectorAll('input[type="date"]').forEach(i=>{
-      i.setAttribute('lang','he-IL');
-      i.setAttribute('dir','rtl');
-      i.style.direction='rtl';
-      i.style.textAlign='right';
-      const setMeta=()=>{
-        const v=String(i.value||'').trim();
-        const txt=v?fmt(v):'';
-        i.title=txt?`תאריך: ${txt}`:'';
-        i.setAttribute('aria-label',txt?`תאריך ${txt}`:'תאריך');
-        let tag=null;
-        if(i.dataset.heDateTagId){
-          tag=document.getElementById(i.dataset.heDateTagId)||null;
-        }
-        if(!tag){
-          tag=document.createElement('div');
-          tag.id='eqsDateTag_'+Math.random().toString(36).slice(2,10);
-          i.dataset.heDateTagId=tag.id;
-          tag.style.fontSize='11px';
-          tag.style.color='var(--text3)';
-          tag.style.marginTop='3px';
-          tag.style.lineHeight='1.35';
-          tag.style.direction='rtl';
-          tag.style.textAlign='right';
-          i.insertAdjacentElement('afterend',tag);
-        }
-        tag.textContent=txt?`תצוגה ישראלית: ${txt}`:'';
-      };
-      setMeta();
       if(i.dataset.heDateBound==='1') return;
       i.dataset.heDateBound='1';
-      i.addEventListener('change',setMeta,{passive:true});
-      i.addEventListener('input',setMeta,{passive:true});
+      const wrap=document.createElement('div');
+      wrap.style.display='block';
+      wrap.style.width='100%';
+      const txt=document.createElement('input');
+      txt.type='text';
+      txt.placeholder='dd-mm-yyyy';
+      txt.style.width='100%';
+      txt.style.direction='ltr';
+      txt.style.textAlign='left';
+      txt.style.boxSizing='border-box';
+      const syncText=()=>{txt.value=i.value?fmt(i.value):'';};
+      const enforceRange=(ymd)=>{
+        if(!ymd) return ymd;
+        const mn=String(i.min||'').trim();
+        const mx=String(i.max||'').trim();
+        if(mn&&ymd<mn) return mn;
+        if(mx&&ymd>mx) return mx;
+        return ymd;
+      };
+      const commitTextToDate=()=>{
+        const ymd=parseDateInputToYMDGlobal(txt.value);
+        if(ymd===null){syncText();return;}
+        const next=enforceRange(ymd);
+        i.value=next||'';
+        syncText();
+        i.dispatchEvent(new Event('input',{bubbles:true}));
+        i.dispatchEvent(new Event('change',{bubbles:true}));
+      };
+      txt.addEventListener('change',commitTextToDate);
+      txt.addEventListener('blur',commitTextToDate);
+      i.addEventListener('input',syncText,{passive:true});
+      i.addEventListener('change',syncText,{passive:true});
+      const valueDesc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
+      if(valueDesc&&valueDesc.configurable){
+        Object.defineProperty(i,'value',{
+          configurable:true,
+          get(){return valueDesc.get.call(this);},
+          set(v){valueDesc.set.call(this,v);syncText();}
+        });
+      }
+      i.style.display='none';
+      i.insertAdjacentElement('beforebegin',wrap);
+      wrap.appendChild(txt);
+      wrap.appendChild(i);
+      syncText();
     });
   }catch(e){}
 }
 const fmt=(d)=>{if(!d)return'—';const p=d.split('-');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:d;};
+function parseDateInputToYMDGlobal(raw){
+  const s=String(raw||'').trim();
+  if(!s) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if(!m) return null;
+  const d=String(parseInt(m[1],10)).padStart(2,'0');
+  const mo=String(parseInt(m[2],10)).padStart(2,'0');
+  const y=String(parseInt(m[3],10));
+  if(Number(mo)<1||Number(mo)>12||Number(d)<1||Number(d)>31) return null;
+  return `${y}-${mo}-${d}`;
+}
 const BROADCAST_SESSION_DISMISS_PREFIX='eqs_bd_sess_';
 function broadcastSessionDismissKey(){return BROADCAST_SESSION_DISMISS_PREFIX+(state.user?.id||'guest');}
 function clearBroadcastNoticeSessionDismiss(userId){
@@ -4753,24 +4780,22 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     return `${y}-${mo}-${d}`;
   };
   const makeILDateControl=(val,onchange,extra={})=>{
-    const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
-    const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{flex:1,direction:'ltr',textAlign:'left'}});
-    const pick=h('input',{type:'date',value:val,...extra,style:{width:'42px',padding:'6px 4px'}});
+    const wrap=h('div',{style:{display:'block'}});
+    const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{width:'100%',direction:'ltr',textAlign:'left'}});
+    const minDate=String(extra&&extra.min?extra.min:'').trim();
     const setValue=(ymd)=>{
       const y=String(ymd||'').trim();
-      pick.value=y;
       txt.value=y?fmt(y):'';
     };
     txt.addEventListener('change',e=>{
       const ymd=parseDateInputToYMD(e.target.value);
-      if(ymd===null){ setValue(pick.value||val||''); return; }
+      if(ymd===null){ setValue(val||''); return; }
+      if(minDate&&ymd<minDate){ setValue(minDate); onchange(minDate); updateConflictMsg(); return; }
       setValue(ymd); onchange(ymd); updateConflictMsg();
     });
-    pick.addEventListener('change',e=>{ setValue(e.target.value); onchange(e.target.value); updateConflictMsg(); });
     wrap.appendChild(txt);
-    wrap.appendChild(pick);
     setValue(val);
-    return {el:wrap,setValue,getValue:()=>pick.value};
+    return {el:wrap,setValue,getValue:()=>parseDateInputToYMD(txt.value)||''};
   };
   updateDateWarn();
 
@@ -12168,13 +12193,13 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
             const startFmt=h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}},c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'');
             row.appendChild(h('div',{class:'form-group'},
               h('label',{style:{fontSize:'12px'}},'מתאריך'),
-              (()=>{const i=h('input',{type:'date',value:c.startDate||''});i.addEventListener('change',e=>{c.startDate=e.target.value;startFmt.textContent=c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'';});return i;})(),
+              (()=>{const i=h('input',{type:'text',value:fmt(c.startDate||''),placeholder:'dd-mm-yyyy',style:{direction:'ltr',textAlign:'left'}});i.addEventListener('change',e=>{const ymd=parseDateInputToYMDGlobal(e.target.value);if(ymd===null){i.value=fmt(c.startDate||'');return;} c.startDate=ymd; i.value=fmt(ymd); startFmt.textContent=c.startDate?`${hebrewWeekdayLabelFromYMD(c.startDate)} · ${fmt(c.startDate)}`:'';});return i;})(),
               startFmt
             ));
             const endFmt=h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'4px'}},c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'');
             row.appendChild(h('div',{class:'form-group'},
               h('label',{style:{fontSize:'12px'}},'עד תאריך'),
-              (()=>{const i=h('input',{type:'date',value:c.endDate||''});i.addEventListener('change',e=>{c.endDate=e.target.value;endFmt.textContent=c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'';});return i;})(),
+              (()=>{const i=h('input',{type:'text',value:fmt(c.endDate||''),placeholder:'dd-mm-yyyy',style:{direction:'ltr',textAlign:'left'}});i.addEventListener('change',e=>{const ymd=parseDateInputToYMDGlobal(e.target.value);if(ymd===null){i.value=fmt(c.endDate||'');return;} c.endDate=ymd; i.value=fmt(ymd); endFmt.textContent=c.endDate?`${hebrewWeekdayLabelFromYMD(c.endDate)} · ${fmt(c.endDate)}`:'';});return i;})(),
               endFmt
             ));
             card.appendChild(row);
