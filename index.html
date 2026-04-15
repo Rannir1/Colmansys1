@@ -17,6 +17,14 @@
   --text2:#94a3b8;--text3:#64748b;--radius:12px;
   --shadow:0 4px 24px rgba(0,0,0,.4)
 }
+*{
+  scrollbar-width:thin;
+  scrollbar-color:var(--accent) rgba(148,163,184,0.22);
+}
+*::-webkit-scrollbar{width:12px;height:12px}
+*::-webkit-scrollbar-track{background:rgba(148,163,184,0.16);border-radius:999px}
+*::-webkit-scrollbar-thumb{background:var(--accent);border-radius:999px;border:2px solid rgba(148,163,184,0.16)}
+*::-webkit-scrollbar-thumb:hover{background:#2563eb}
 html[data-ui="aurora"]{
   --bg:#080c14;--bg2:#111827;--bg3:#1a2332;--bg4:#243045;
   --border:rgba(125,211,252,0.2);--accent:#22d3ee;--text:#e8f4ff;
@@ -9856,46 +9864,51 @@ function renderRemovedInventory(){
     h('th',{},'תאריך הוצאה'),h('th',{},'סיבה'),h('th',{},'פעולות')
   )));
   const tbody=h('tbody',{});
-  const visibleRemoved=[...removed].reverse().filter(item=>rowMatchesRemovedSearch(item,removedSearch));
-  summaryEl.textContent=`סה"כ ${removed.length} פריטים שהוצאו מהמלאי | מוצגים: ${visibleRemoved.length}`;
-  visibleRemoved.forEach(item=>{
-    const jName=journals.find(j=>j.id===item.journalId)?.name||'—';
-    const restoreBtn=h('button',{class:'btn btn-sm btn-success',onclick:()=>{
-      const c=findInventoryJournalBarcodeConflict(state.inventory,item.barcode,item.journalId,null);
-      if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
-      if(!confirm(`להחזיר את "${item.name}" למלאי?`)) return;
-      const {removedAt,reason,removeReason,...restored}=item;
-      const inv2=[...state.inventory,{...restored,status:'תקין'}];
-      const removed2=state.removed.filter(r=>r.id!==item.id);
-      setState({inventory:inv2,removed:removed2});
-      save(SK.inventory,inv2);save(SK.removed,removed2);
-    }},'↩ החזר למלאי');
-    const restoreAndEditBtn=h('button',{class:'btn btn-sm btn-secondary',onclick:()=>{
-      const c=findInventoryJournalBarcodeConflict(state.inventory,item.barcode,item.journalId,null);
-      if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
-      if(!confirm(`להחזיר את "${item.name}" ולפתוח מיד לעריכה?`)) return;
-      const {removedAt,reason,removeReason,...restored}=item;
-      const restoredItem={...restored,status:'תקין'};
-      const inv2=[...state.inventory,restoredItem];
-      const removed2=state.removed.filter(r=>r.id!==item.id);
-      setState({inventory:inv2,removed:removed2,modal:()=>renderItemModal({...restoredItem})});
-      save(SK.inventory,inv2);save(SK.removed,removed2);
-    }},'↩✏ שחזר וערוך');
-    tbody.appendChild(h('tr',{},
-      h('td',{},h('code',{style:{fontSize:'11px'}},item.barcode)),
-      h('td',{style:{fontWeight:'600'}},item.name),
-      h('td',{style:{fontSize:'12px'}},item.type||'—'),
-      h('td',{style:{fontSize:'12px'}},jName),
-      h('td',{style:{fontSize:'12px'}},item.removedAt?fmt(item.removedAt):'—'),
-      h('td',{style:{fontSize:'12px',maxWidth:'200px'}},item.reason||item.removeReason||'—'),
-      h('td',{},h('div',{class:'flex gap-2'},restoreBtn,restoreAndEditBtn))
-    ));
-  });
+  const allRemoved=[...removed].reverse();
+  const renderRemovedRows=()=>{
+    const visibleRemoved=allRemoved.filter(item=>rowMatchesRemovedSearch(item,removedSearch));
+    summaryEl.textContent=`סה"כ ${removed.length} פריטים שהוצאו מהמלאי | מוצגים: ${visibleRemoved.length}`;
+    tbody.innerHTML='';
+    visibleRemoved.forEach(item=>{
+      const jName=journals.find(j=>j.id===item.journalId)?.name||'—';
+      const restoreBtn=h('button',{class:'btn btn-sm btn-success',onclick:()=>{
+        const c=findInventoryJournalBarcodeConflict(state.inventory,item.barcode,item.journalId,null);
+        if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
+        if(!confirm(`להחזיר את "${item.name}" למלאי?`)) return;
+        const {removedAt,reason,removeReason,...restored}=item;
+        const inv2=[...state.inventory,{...restored,status:'תקין'}];
+        const removed2=state.removed.filter(r=>r.id!==item.id);
+        setState({inventory:inv2,removed:removed2});
+        save(SK.inventory,inv2);save(SK.removed,removed2);
+      }},'↩ החזר למלאי');
+      const restoreAndEditBtn=h('button',{class:'btn btn-sm btn-secondary',onclick:()=>{
+        const c=findInventoryJournalBarcodeConflict(state.inventory,item.barcode,item.journalId,null);
+        if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
+        if(!confirm(`להחזיר את "${item.name}" ולפתוח מיד לעריכה?`)) return;
+        const {removedAt,reason,removeReason,...restored}=item;
+        const restoredItem={...restored,status:'תקין'};
+        const inv2=[...state.inventory,restoredItem];
+        const removed2=state.removed.filter(r=>r.id!==item.id);
+        setState({inventory:inv2,removed:removed2,modal:()=>renderItemModal({...restoredItem})});
+        save(SK.inventory,inv2);save(SK.removed,removed2);
+      }},'↩✏ שחזר וערוך');
+      tbody.appendChild(h('tr',{},
+        h('td',{},h('code',{style:{fontSize:'11px'}},item.barcode)),
+        h('td',{style:{fontWeight:'600'}},item.name),
+        h('td',{style:{fontSize:'12px'}},item.type||'—'),
+        h('td',{style:{fontSize:'12px'}},jName),
+        h('td',{style:{fontSize:'12px'}},item.removedAt?fmt(item.removedAt):'—'),
+        h('td',{style:{fontSize:'12px',maxWidth:'200px'}},item.reason||item.removeReason||'—'),
+        h('td',{},h('div',{class:'flex gap-2'},restoreBtn,restoreAndEditBtn))
+      ));
+    });
+  };
+  renderRemovedRows();
   tbl.appendChild(tbody);
   return h('div',{},
     h('div',{class:'page-header'},h('h1',{},'פריטים שהוצאו מהמלאי'),summaryEl,tools),
     h('div',{class:'search-bar'},
-      (()=>{const i=h('input',{placeholder:'חיפוש בפריטים שהוצאו (ברקוד, שם, ספק, סיבה...)',value:removedSearch});i.addEventListener('input',e=>{state.removedSearch=e.target.value;render();});return i;})()
+      (()=>{const i=h('input',{placeholder:'חיפוש בפריטים שהוצאו (ברקוד, שם, ספק, סיבה...)',value:removedSearch});i.addEventListener('input',e=>{removedSearch=e.target.value;state.removedSearch=removedSearch;renderRemovedRows();});return i;})()
     ),
     h('div',{class:'card'},
       h('div',{
