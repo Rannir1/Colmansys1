@@ -2594,6 +2594,10 @@ function forceDateInputsHebrew(rootEl){
       };
       txt.addEventListener('change',commitTextToDate);
       txt.addEventListener('blur',commitTextToDate);
+      const calWrap=document.createElement('div');
+      calWrap.style.position='relative';
+      calWrap.style.display='inline-flex';
+      calWrap.style.alignItems='center';
       const calBtn=document.createElement('button');
       calBtn.type='button';
       calBtn.className='btn btn-secondary';
@@ -2601,10 +2605,7 @@ function forceDateInputsHebrew(rootEl){
       calBtn.style.padding='6px 9px';
       calBtn.style.fontSize='14px';
       calBtn.style.lineHeight='1';
-      calBtn.addEventListener('click',()=>{
-        try{i.showPicker();return;}catch(_){}
-        try{i.focus({preventScroll:true});i.click();}catch(_){}
-      });
+      calBtn.style.pointerEvents='none';
       i.addEventListener('input',syncText,{passive:true});
       i.addEventListener('change',syncText,{passive:true});
       const valueDesc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
@@ -2615,17 +2616,19 @@ function forceDateInputsHebrew(rootEl){
           set(v){valueDesc.set.call(this,v);syncText();}
         });
       }
-      i.style.position='fixed';
-      i.style.left='-10000px';
-      i.style.top='0';
+      i.style.position='absolute';
+      i.style.inset='0';
       i.style.opacity='0';
-      i.style.width='1px';
-      i.style.height='1px';
+      i.style.width='100%';
+      i.style.height='100%';
       i.style.pointerEvents='auto';
+      i.style.cursor='pointer';
+      i.style.zIndex='2';
       i.insertAdjacentElement('beforebegin',wrap);
       wrap.appendChild(txt);
-      wrap.appendChild(calBtn);
-      wrap.appendChild(i);
+      wrap.appendChild(calWrap);
+      calWrap.appendChild(calBtn);
+      calWrap.appendChild(i);
       syncText();
     });
   }catch(e){}
@@ -4822,8 +4825,9 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
   const makeILDateControl=(val,onchange,extra={})=>{
     const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
     const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{width:'100%',direction:'ltr',textAlign:'left'}});
-    const pick=h('input',{type:'date',value:val,'data-he-date-proxy':'1',...extra,style:{position:'fixed',left:'-10000px',top:'0',opacity:'0',width:'1px',height:'1px',pointerEvents:'auto'}});
-    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 9px',fontSize:'14px',lineHeight:1},onclick:()=>{try{pick.showPicker();return;}catch(_){ } try{pick.focus({preventScroll:true});pick.click();}catch(_){}}},'📅');
+    const calWrap=h('div',{style:{position:'relative',display:'inline-flex',alignItems:'center'}});
+    const pick=h('input',{type:'date',value:val,'data-he-date-proxy':'1',...extra,style:{position:'absolute',inset:0,opacity:'0',width:'100%',height:'100%',pointerEvents:'auto',cursor:'pointer',zIndex:2}});
+    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 9px',fontSize:'14px',lineHeight:1,pointerEvents:'none'}},'📅');
     const minDate=String(extra&&extra.min?extra.min:'').trim();
     const setValue=(ymd)=>{
       const y=String(ymd||'').trim();
@@ -4837,8 +4841,9 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     });
     pick.addEventListener('change',e=>{setValue(e.target.value); onchange(e.target.value); updateConflictMsg();});
     wrap.appendChild(txt);
-    wrap.appendChild(calBtn);
-    wrap.appendChild(pick);
+    wrap.appendChild(calWrap);
+    calWrap.appendChild(calBtn);
+    calWrap.appendChild(pick);
     setValue(val);
     return {el:wrap,setValue,getValue:()=>parseDateInputToYMD(txt.value)||''};
   };
