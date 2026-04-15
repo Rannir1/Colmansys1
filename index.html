@@ -2621,6 +2621,24 @@ function forceDateInputsHebrew(rootEl){
     });
   }catch(e){}
 }
+let __eqsDateObserverStarted=false;
+function ensureDateInputsHebrewObserver(){
+  if(__eqsDateObserverStarted) return;
+  __eqsDateObserverStarted=true;
+  try{
+    let rafId=0;
+    const kick=()=>{
+      if(rafId) return;
+      rafId=requestAnimationFrame(()=>{
+        rafId=0;
+        forceDateInputsHebrew(document);
+      });
+    };
+    const obs=new MutationObserver(kick);
+    obs.observe(document.body,{childList:true,subtree:true});
+    kick();
+  }catch(_){}
+}
 const fmt=(d)=>{if(!d)return'—';const p=d.split('-');return p.length===3?`${p[2]}-${p[1]}-${p[0]}`:d;};
 function parseDateInputToYMDGlobal(raw){
   const s=String(raw||'').trim();
@@ -2892,6 +2910,7 @@ function render(){
     if(state.modal)root.appendChild(state.modal());
     forceTimeInputs24(root);
     forceDateInputsHebrew(root);
+    ensureDateInputsHebrewObserver();
   }catch(err){
     console.error('EQS render',err);
     try{root.innerHTML='';}catch(_e){}
