@@ -2601,7 +2601,10 @@ function forceDateInputsHebrew(rootEl){
       calBtn.style.padding='6px 9px';
       calBtn.style.fontSize='14px';
       calBtn.style.lineHeight='1';
-      calBtn.addEventListener('click',()=>{try{i.showPicker();}catch(_){i.click();}});
+      calBtn.addEventListener('click',()=>{
+        try{i.showPicker();return;}catch(_){}
+        try{i.focus({preventScroll:true});i.click();}catch(_){}
+      });
       i.addEventListener('input',syncText,{passive:true});
       i.addEventListener('change',syncText,{passive:true});
       const valueDesc=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
@@ -2612,7 +2615,13 @@ function forceDateInputsHebrew(rootEl){
           set(v){valueDesc.set.call(this,v);syncText();}
         });
       }
-      i.style.display='none';
+      i.style.position='fixed';
+      i.style.left='-10000px';
+      i.style.top='0';
+      i.style.opacity='0';
+      i.style.width='1px';
+      i.style.height='1px';
+      i.style.pointerEvents='auto';
       i.insertAdjacentElement('beforebegin',wrap);
       wrap.appendChild(txt);
       wrap.appendChild(calBtn);
@@ -4813,8 +4822,8 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
   const makeILDateControl=(val,onchange,extra={})=>{
     const wrap=h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
     const txt=h('input',{type:'text',value:fmt(val),placeholder:'dd-mm-yyyy',style:{width:'100%',direction:'ltr',textAlign:'left'}});
-    const pick=h('input',{type:'date',value:val,'data-he-date-proxy':'1',...extra,style:{position:'absolute',opacity:'0',pointerEvents:'none',width:'1px',height:'1px'}});
-    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 9px',fontSize:'14px',lineHeight:1},onclick:()=>{try{pick.showPicker();}catch(_){pick.click();}}},'📅');
+    const pick=h('input',{type:'date',value:val,'data-he-date-proxy':'1',...extra,style:{position:'fixed',left:'-10000px',top:'0',opacity:'0',width:'1px',height:'1px',pointerEvents:'auto'}});
+    const calBtn=h('button',{type:'button',class:'btn btn-secondary',style:{padding:'6px 9px',fontSize:'14px',lineHeight:1},onclick:()=>{try{pick.showPicker();return;}catch(_){ } try{pick.focus({preventScroll:true});pick.click();}catch(_){}}},'📅');
     const minDate=String(extra&&extra.min?extra.min:'').trim();
     const setValue=(ymd)=>{
       const y=String(ymd||'').trim();
