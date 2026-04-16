@@ -8497,9 +8497,10 @@ function renderInventory(){
           if(search&&!invAdminItemMatchesSearch(i,state.journals,search))return false;
           return true;
         });
+        const escCsv=v=>`"${String(v==null?'':v).replace(/"/g,'""')}"`;
         const csv=[['ברקוד','שם','סוג','יצרן','מ. סידורי','מחיר','ספק','תאריך','יומן','להשאלה','סטטוס','מיקום'],
           ...filtered.map(i=>[i.barcode,i.name,i.type,i.manufacturer,i.serial,i.price,i.supplier,i.purchaseDate,i.journalId,i.loanable,i.status,i.location])
-        ].map(r=>r.join(',')).join('\n');
+        ].map(r=>r.map(escCsv).join(',')).join('\n');
         const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'}));a.download='inventory.csv';a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);
       }},'📥 ייצא CSV')
     ),
