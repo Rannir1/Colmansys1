@@ -9736,7 +9736,7 @@ function renderRemovedInventory(){
               </select>
               <button id="eqsImportSearchBtn" class="btn btn-primary">חפש</button>
               <button id="eqsImportClearSearchBtn" class="btn btn-secondary">נקה חיפוש</button>
-              <button id="eqsImportSelectAll" class="btn btn-secondary">בחר את כל המסוננים</button>
+              <button id="eqsImportSelectAll" class="btn btn-secondary">סמן את כל הפריטים</button>
               <button id="eqsImportClearSel" class="btn btn-secondary">נקה בחירה</button>
               <span id="eqsImportSelInfo" style="font-size:12px;color:var(--text3)"></span>
             </div>
@@ -9809,7 +9809,7 @@ function renderRemovedInventory(){
           srcFilterEl.addEventListener('change',renderRows);
           box.querySelector('#eqsImportSearchBtn').addEventListener('click',renderRows);
           box.querySelector('#eqsImportClearSearchBtn').addEventListener('click',()=>{qEl.value='';srcFilterEl.value='all';renderRows();});
-          box.querySelector('#eqsImportSelectAll').addEventListener('click',()=>{getFiltered().forEach(r=>selectedSet.add(r.barcode));renderRows();});
+          box.querySelector('#eqsImportSelectAll').addEventListener('click',()=>{rows.forEach(r=>selectedSet.add(r.barcode));renderRows();});
           box.querySelector('#eqsImportClearSel').addEventListener('click',()=>{selectedSet.clear();renderRows();});
           box.querySelector('#eqsImportCloseBtn').addEventListener('click',close);
 
