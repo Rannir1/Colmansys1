@@ -46,7 +46,7 @@ body{font-family:'Heebo',Arial,sans-serif;direction:rtl;background:var(--bg);col
 .app{display:flex;flex:1;min-height:0;min-width:0;overflow:hidden}
 .sidebar{width:240px;min-width:240px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;right:0;bottom:0;z-index:100;overflow-y:auto}
 .sidebar-logo{padding:20px 16px 14px;border-bottom:1px solid var(--border);text-align:center;user-select:none;cursor:default}
-.sidebar-logo,.sidebar-logo *{caret-color:transparent}
+w.sidebar-logo,.sidebar-logo *{caret-color:transparent}
 .sidebar-logo img{height:52px;object-fit:contain;opacity:.9;margin-bottom:8px}
 .sidebar-logo h2{font-size:12px;font-weight:700;color:var(--accent);line-height:1.4}
 .sidebar-logo p{font-size:10px;color:var(--text3);margin-top:3px}
@@ -9594,7 +9594,7 @@ function renderRemovedInventory(){
     const t=String(v||'').trim();
     return /^\d+$/.test(t)?t.padStart(6,'0'):t;
   };
-  const parseCsvRows=text=>{
+  const parseCsvRows=(text,delimiter=',')=>{
     const out=[]; let row=[]; let cur=''; let q=false;
     for(let i=0;i<text.length;i++){
       const ch=text[i];
@@ -9604,7 +9604,7 @@ function renderRemovedInventory(){
         } else cur+=ch;
       } else {
         if(ch==='"') q=true;
-        else if(ch===','){row.push(cur);cur='';}
+        else if(ch===delimiter){row.push(cur);cur='';}
         else if(ch==='\n'){row.push(cur);out.push(row);row=[];cur='';}
         else if(ch!=='\r') cur+=ch;
       }
@@ -9623,15 +9623,23 @@ function renderRemovedInventory(){
       reader.onload=()=>{
         try{
           const txt=String(reader.result||'');
-          const table=parseCsvRows(txt);
+          const tables=[
+            parseCsvRows(txt,','),
+            parseCsvRows(txt,';'),
+            parseCsvRows(txt,'\t')
+          ].filter(t=>Array.isArray(t)&&t.length);
+          const table=tables.sort((a,b)=>(b[0]?.length||0)-(a[0]?.length||0))[0]||[];
           if(table.length<2){alert('קובץ CSV ריק או לא תקין');return;}
-          const header=table[0].map(x=>String(x||'').trim());
+          const header=table[0].map((x,i)=>{
+            const v=String(x||'').trim();
+            return i===0?v.replace(/^\uFEFF/,''):v;
+          });
           const idx=(...names)=>names.map(n=>header.indexOf(n)).find(i=>i>=0);
-          const bcIdx=idx('Barcode','ברקוד');
-          const nameIdx=idx('Name','שם');
-          const typeIdx=idx('Type','סוג');
-          const supplierIdx=idx('Supplier','ספק');
-          const idIdx=idx('InternalId','מזהה');
+          const bcIdx=idx('Barcode','ברקוד','barcode','מק"ט','מק׳ט');
+          const nameIdx=idx('Name','שם','שם פריט','Item Name','item_name');
+          const typeIdx=idx('Type','סוג','קטגוריה','Category');
+          const supplierIdx=idx('Supplier','ספק','Vendor');
+          const idIdx=idx('InternalId','מזהה','ID','Id','id');
           const payloadIdx=idx('JSON_מלא_לשחזור','PayloadJson','payload_json');
           if(bcIdx==null||bcIdx<0){alert('לא נמצאה עמודת ברקוד בקובץ');return;}
           const rows=[];
