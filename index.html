@@ -4038,8 +4038,29 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
   jrnSel.addEventListener('change',e=>{form.journalId=e.target.value;rebuildItems();});
 
   const userSel=h('select',{style:{width:'100%'}});
-  users.forEach(u=>{const o=h('option',{value:u.id},u.name);if(u.id===form.userId)o.selected=true;userSel.appendChild(o);});
+  const fillBulkUserOptions=(query)=>{
+    const q=String(query||'').trim().toLowerCase();
+    const filtered=q
+      ? users.filter(u=>String(u.name||'').toLowerCase().includes(q)||String(u.tz||'').includes(q))
+      : users;
+    userSel.innerHTML='';
+    filtered.forEach(u=>{
+      const o=h('option',{value:u.id},u.name);
+      if(String(u.id)===String(form.userId)) o.selected=true;
+      userSel.appendChild(o);
+    });
+    if(!filtered.some(u=>String(u.id)===String(form.userId))&&filtered.length){
+      form.userId=filtered[0].id;
+      userSel.value=String(form.userId);
+    }
+  };
   userSel.addEventListener('change',e=>form.userId=e.target.value);
+  fillBulkUserOptions('');
+  const bulkUserPickerEl=(()=>{
+    const searchInp=h('input',{type:'search',placeholder:'חיפוש מזמין לפי שם/ת.ז...',style:{width:'100%',marginBottom:'8px'}});
+    searchInp.addEventListener('input',e=>fillBulkUserOptions(e.target.value));
+    return h('div',{},searchInp,userSel);
+  })();
 
   const bulkPickBody=h('div',{style:{display:'none',marginTop:'8px',padding:'10px',background:'var(--bg2)',borderRadius:'8px',fontSize:'12px'}});
   const DAY_BULK=['א','ב','ג','ד','ה','ו','ש'];
@@ -4183,7 +4204,7 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
     h('h2',{},'📋 הזמנה קבוצתית'),
     h('p',{style:{fontSize:'12px',color:'var(--text3)',marginBottom:'12px',lineHeight:1.45}},'אפשר לשלב: כמה פריטים יחד עם טווח תאריך אחד (ברירת מחדל), או לסמן למטה «תאריכים בודדים» ואז כל פריט נבחר יקבל הזמנה נפרדת לכל תאריך ברשימה. לא ניתן לשלב תאריכים בודדים עם מחזוריות שבועית באותה פעולה.'),
     h('div',{class:'responsive-grid-2',style:{gap:'12px',marginBottom:'16px'}},
-      h('div',{class:'form-group'},h('label',{},'מזמין'),userSel),
+      h('div',{class:'form-group'},h('label',{},'מזמין'),bulkUserPickerEl),
       h('div',{class:'form-group'},h('label',{},'יומן'),jrnSel),
       h('div',{class:'form-group'},h('label',{},'תאריך שאילה'),bulkStartDateInp,bulkBorrowDowLine),
       h('div',{class:'form-group'},h('label',{},'תאריך החזרה'),bulkEndDateInp,bulkReturnDowLine),
@@ -5025,7 +5046,7 @@ function renderOrderModal(preItemId, journalId, preDate, preStartTime, preEndTim
     conflictMsgEl,
     ...(isAdmin?[
       h('div',{class:'form-group'},h('label',{},'מזמין'),
-        makeSelect(users.map(u=>[u.id,u.name]),form.userId,v=>form.userId=v)
+        (()=>{const s=h('select',{style:{width:'100%'}});const fill=(query)=>{const q=String(query||'').trim().toLowerCase();const filtered=q?users.filter(u=>String(u.name||'').toLowerCase().includes(q)||String(u.tz||'').includes(q)):users;s.innerHTML='';filtered.forEach(u=>{const o=h('option',{value:u.id},u.name);if(String(u.id)===String(form.userId))o.selected=true;s.appendChild(o);});if(!filtered.some(u=>String(u.id)===String(form.userId))&&filtered.length){form.userId=filtered[0].id;s.value=String(form.userId);}};s.addEventListener('change',e=>form.userId=e.target.value);fill('');const searchInp=h('input',{type:'search',placeholder:'חיפוש מזמין לפי שם/ת.ז...',style:{width:'100%',marginBottom:'8px'}});searchInp.addEventListener('input',e=>fill(e.target.value));return h('div',{},searchInp,s);})()
       )
     ]:[]),
     h('div',{class:'form-group'},h('label',{},'פריט *'), itemSelEl),
@@ -5475,7 +5496,9 @@ function renderRecurringModal(preItemId, journalId, preDate){
 
   const modal=h('div',{class:'modal',style:{maxWidth:'580px',width:'100%',maxHeight:'90vh',overflowY:'auto'}},
     h('h2',{},'🔁 הזמנה מחזורית'),
-    ...(true?[h('div',{class:'form-group'},h('label',{},'מזמין'),makeSel(users.map(u=>[u.id,u.name]),form.userId,v=>form.userId=v))]: []),
+    ...(true?[h('div',{class:'form-group'},h('label',{},'מזמין'),
+      (()=>{const s=h('select',{style:{width:'100%'}});const fill=(query)=>{const q=String(query||'').trim().toLowerCase();const filtered=q?users.filter(u=>String(u.name||'').toLowerCase().includes(q)||String(u.tz||'').includes(q)):users;s.innerHTML='';filtered.forEach(u=>{const o=h('option',{value:u.id},u.name);if(String(u.id)===String(form.userId))o.selected=true;s.appendChild(o);});if(!filtered.some(u=>String(u.id)===String(form.userId))&&filtered.length){form.userId=filtered[0].id;s.value=String(form.userId);}};s.addEventListener('change',e=>{form.userId=e.target.value;rebuildPreview();});fill('');const searchInp=h('input',{type:'search',placeholder:'חיפוש מזמין לפי שם/ת.ז...',style:{width:'100%',marginBottom:'8px'}});searchInp.addEventListener('input',e=>fill(e.target.value));return h('div',{},searchInp,s);})()
+    )]: []),
     h('div',{class:'form-group'},h('label',{},'פריט *'),
       (()=>{
         const sel=h('select',{style:{width:'100%'}});
@@ -6098,7 +6121,7 @@ function renderEditOrderModal(order, prevModal){
     h('h2',{},'עריכת הזמנה'),
     conflictMsgEl,
     ...(isAdmin?[h('div',{class:'form-group'},h('label',{},'מזמין'),
-      makeSelect(users.map(u=>[u.id,u.name]),form.userId,v=>form.userId=v)
+      (()=>{const originalUserId=String(order.userId||'');const s=h('select',{style:{width:'100%'}});const fill=(query)=>{const q=String(query||'').trim().toLowerCase();const filtered=q?users.filter(u=>String(u.name||'').toLowerCase().includes(q)||String(u.tz||'').includes(q)):users;s.innerHTML='';filtered.forEach(u=>{const o=h('option',{value:u.id},u.name);if(String(u.id)===String(form.userId))o.selected=true;s.appendChild(o);});if(!filtered.some(u=>String(u.id)===String(form.userId))&&filtered.length){form.userId=filtered[0].id;s.value=String(form.userId);}};s.addEventListener('change',e=>form.userId=e.target.value);fill('');const searchInp=h('input',{type:'search',placeholder:'חיפוש מזמין לפי שם/ת.ז...',style:{width:'100%'}});searchInp.addEventListener('input',e=>fill(e.target.value));const resetBtn=h('button',{class:'btn btn-secondary',type:'button',onclick:()=>{form.userId=originalUserId;searchInp.value='';fill('');}},'↩ חזרה');return h('div',{},h('div',{class:'flex gap-2',style:{marginBottom:'8px'}},searchInp,resetBtn),s);})()
     )]:[]),
     h('div',{class:'form-group'},
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px'}},
