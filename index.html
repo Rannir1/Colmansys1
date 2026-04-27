@@ -1783,7 +1783,7 @@ function emailOrderPdf(o){
     to_email:u.email,
     to_name:u.name||'',
     subject,
-    message,
+    message:normalizeEmailMessageText(message),
     order_num:'',
     item_name:'',
     order_details:'',
@@ -2837,7 +2837,7 @@ function flushDeferredOrderOutreach(orderId,closeModal){
           to_email:adminEmail,
           to_name:'מנהל המחסן',
           subject:`עדכון הזמנה #${ord.orderNum||''} — ${uName}`,
-          message:summary,
+          message:normalizeEmailMessageText(summary),
           order_num:String(ord.orderNum||''),
           item_name:itemM?.name||ord.itemName||'—',
           from_name:uName
@@ -6595,7 +6595,7 @@ function renderOrderDetailModal(order){
                   to_email:recipUser.email,
                   to_name:recipUser.name,
                   subject:`שאלה ממנהל על הזמנה #${order.orderNum||''}`,
-                  message:txt,
+                  message:normalizeEmailMessageText(txt),
                   order_num:order.orderNum||'—',
                   item_name:item2?.name||order.itemName||'—',
                   from_name:'מנהל המחסן'
@@ -7869,10 +7869,37 @@ function openQuickOrderModal(date){
 
   renderItemArea();
 
+  const isAdminUser=String(state.user?.role||'')==='admin';
+  const userPickerEl=(()=>{
+    const selectEl=h('select',{style:{width:'100%'}});
+    const fillOptions=(query)=>{
+      const q=String(query||'').trim().toLowerCase();
+      const filtered=q
+        ? users.filter(u=>String(u.name||'').toLowerCase().includes(q)||String(u.tz||'').includes(q))
+        : users;
+      selectEl.innerHTML='';
+      filtered.forEach(u=>{
+        const o=h('option',{value:u.id},u.name);
+        if(String(u.id)===String(form.userId)) o.selected=true;
+        selectEl.appendChild(o);
+      });
+      if(!filtered.some(u=>String(u.id)===String(form.userId))&&filtered.length){
+        form.userId=filtered[0].id;
+        selectEl.value=String(form.userId);
+      }
+    };
+    selectEl.addEventListener('change',e=>form.userId=e.target.value);
+    fillOptions('');
+    if(!isAdminUser) return selectEl;
+    const searchInp=h('input',{type:'search',placeholder:'חיפוש מזמין לפי שם/ת.ז...',style:{width:'100%',marginBottom:'8px'}});
+    searchInp.addEventListener('input',e=>fillOptions(e.target.value));
+    return h('div',{},searchInp,selectEl);
+  })();
+
   const modal=h('div',{class:'modal'},
     h('h2',{},'⚡ הזמנה מהירה'),
     h('div',{class:'form-group'},h('label',{},'מזמין'),
-      (()=>{const s=h('select',{style:{width:'100%'}});users.forEach(u=>{const o=h('option',{value:u.id},u.name);if(u.id===form.userId)o.selected=true;s.appendChild(o);});s.addEventListener('change',e=>form.userId=e.target.value);return s;})()
+      userPickerEl
     ),
     h('div',{class:'form-group'},
       h('label',{},'פריט'),
@@ -13278,4 +13305,3 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
 </script>
 </body>
 </html>
-  
