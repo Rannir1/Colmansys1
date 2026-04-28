@@ -1291,7 +1291,7 @@ const IL_HOLIDAYS = {
   // 2026
   '2026-03-13':'פורים',
   '2026-04-01':'פסח','2026-04-02':'פסח','2026-04-07':'פסח','2026-04-08':'פסח',
-  '2026-04-29':'יום העצמאות',
+  '2026-04-22':'יום העצמאות',
   '2026-05-21':'שבועות','2026-05-22':'שבועות',
   '2026-09-11':'ראש השנה','2026-09-12':'ראש השנה','2026-09-13':'ראש השנה',
   '2026-09-20':'יום כיפור','2026-09-21':'יום כיפור',
@@ -7502,15 +7502,150 @@ function openLoanDetail(o){
       sel.addEventListener('change',()=>{ if(sel.value) addKit(); });
       return h('div',{style:{minWidth:0}},h('div',{style:{fontSize:'11px',fontWeight:'700',marginBottom:'4px'}},'🧰 ערכה מוכנה'),sel);
     })();
+    let closeCopyImportUi=()=>{};
     const copyFromPrevSection=(()=>{
-      const prevOrders=state.orders.filter(x=>x.id!==o.id&&x.itemId===o.itemId&&x.status!=='נדחתה').sort((a,b)=>((String(b.startDate||'0000-00-00'))+' '+String(b.startTime||'00:00')).localeCompare((String(a.startDate||'0000-00-00'))+' '+String(a.startTime||'00:00'))).slice(0,6);
-      if(lockLoanModal||!prevOrders.length) return h('span',{});
+      if(lockLoanModal) return h('span',{});
+      const currentMain=inventoryItemByOrderItemId(o.itemId);
+      const currentType=String(currentMain?.type||'').trim();
+      const currentJournalId=String(currentMain?.journalId||'').trim();
+      const isSameMainFamily=(otherItem)=>{
+        if(!otherItem||String(otherItem.id||'')===String(currentMain?.id||'')) return false;
+        const otherType=String(otherItem.type||'').trim();
+        const otherJournalId=String(otherItem.journalId||'').trim();
+        if(currentType&&otherType&&currentType===otherType) return true;
+        if(currentJournalId&&otherJournalId&&currentJournalId===otherJournalId) return true;
+        return false;
+      };
+      const toStamp=(ord)=>((String(ord.startDate||'0000-00-00'))+' '+String(ord.startTime||'00:00'));
+      const allPrevOrders=(state.orders||[]).filter(x=>x.id!==o.id&&x.status!=='נדחתה');
+      const sameMainOrders=allPrevOrders.filter(x=>String(x.itemId||'')===String(o.itemId||'')).sort((a,b)=>toStamp(b).localeCompare(toStamp(a))).slice(0,6);
+      const sameTypeOrders=(currentMain?allPrevOrders.filter(x=>{
+        if(String(x.itemId||'')===String(o.itemId||'')) return false;
+        const it=inventoryItemByOrderItemId(x.itemId);
+        return isSameMainFamily(it);
+      }):[]).sort((a,b)=>toStamp(b).localeCompare(toStamp(a))).slice(0,6);
+      if(!sameMainOrders.length&&!sameTypeOrders.length) return h('span',{});
       const camerasJ=getCamerasJournalId(); let open=false;
-      const panel=h('div',{style:{minWidth:0}}); const body=h('div',{style:{display:'none',marginTop:'8px',background:'var(--bg3)',borderRadius:'8px',padding:'10px',maxHeight:'160px',overflowY:'auto'}});
+      let mode='same_main';
+      const panel=h('div',{style:{minWidth:0}});
+      const body=h('div',{style:{display:'none',marginTop:'8px',background:'var(--bg3)',borderRadius:'8px',padding:'10px',maxHeight:'240px',overflowY:'auto'}});
+      const listHost=h('div',{});
+      let selectiveOverlay=null;
+      const closeSelectivePicker=()=>{
+        if(selectiveOverlay&&selectiveOverlay.parentNode) selectiveOverlay.parentNode.removeChild(selectiveOverlay);
+        selectiveOverlay=null;
+      };
+      closeCopyImportUi=()=>{
+        closeSelectivePicker();
+        open=false;
+        body.style.display='none';
+        toggleBtn.textContent='📋 העתק פריטים מהזמנה קודמת ▼';
+      };
       const toggleBtn=h('button',{class:'btn btn-secondary',style:{fontSize:'12px',width:'100%',textAlign:'right'},onclick:()=>{open=!open; body.style.display=open?'block':'none'; toggleBtn.textContent=open?'📋 העתק פריטים מהזמנה קודמת ▲':'📋 העתק פריטים מהזמנה קודמת ▼';}},'📋 העתק פריטים מהזמנה קודמת ▼');
-      prevOrders.forEach(prev=>{ const prevReturned=Array.isArray(prev.returnedItems)?prev.returnedItems:[]; const prevExtras=Array.from(new Set([...(prev.extraItems||[]),...prevReturned.filter(ri=>((ri.type||'barcode')==='barcode')).map(ri=>ri.val)])); const prevFree=Array.from(new Set([...(prev.freeTextItems||[]),...prevReturned.filter(ri=>((ri.type||'barcode')==='free')).map(ri=>ri.val)])); const u=state.users.find(u=>u.id===prev.userId)||{name:getUserName(prev.userId)};
-        body.appendChild(h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px',borderBottom:'1px solid var(--border)',fontSize:'13px'}},h('div',{},h('div',{style:{fontWeight:'700'}},`#${prev.orderNum||'—'} — ${u.name}`),h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}},`תאריך שאילה: ${fmt(prev.startDate)} ${prev.startTime||''}`)),h('button',{class:'btn btn-sm btn-primary',style:{fontSize:'11px'},onclick:()=>{let added=0,skipped=0; prevExtras.forEach(bc=>{if(extraItems.includes(bc)){skipped++;return;} const it=findByBarcode(state.inventory,bc); if(!it){skipped++;return;} if(it.journalId===camerasJ&&String(it.id)!==String(o.itemId)){skipped++;return;} extraItems.push(bc);added++;}); prevFree.forEach(txt=>{if(freeTextItems.includes(txt)){skipped++;return;} freeTextItems.push(txt);added++;}); if(listFilterQ){listFilterQ=''; if(listFilterInp) listFilterInp.value='';} if(['סופק','הוחזר חלקית'].includes(o.status)) autoSaveReturnsUi(); else autoSave(); renderList(); open=false; body.style.display='none'; toggleBtn.textContent='📋 העתק פריטים מהזמנה קודמת ▼'; msgEl.innerHTML=`<div class="alert alert-success">✓ הועתקו ${added} פריטים מהזמנה #${prev.orderNum||'—'}${skipped>0?' | '+skipped+' כפולים דולגו':''}</div>`; setTimeout(()=>msgEl.innerHTML='',3000);}},'העתק'))); });
-      panel.appendChild(toggleBtn); panel.appendChild(body); return panel;
+      const getPrevPayload=(prev)=>{
+        const prevReturned=Array.isArray(prev.returnedItems)?prev.returnedItems:[];
+        const prevExtras=Array.from(new Set([...(prev.extraItems||[]),...prevReturned.filter(ri=>((ri.type||'barcode')==='barcode')).map(ri=>ri.val)]));
+        const prevFree=Array.from(new Set([...(prev.freeTextItems||[]),...prevReturned.filter(ri=>((ri.type||'barcode')==='free')).map(ri=>ri.val)]));
+        const u=state.users.find(uu=>uu.id===prev.userId)||{name:getUserName(prev.userId)};
+        const prevMain=inventoryItemByOrderItemId(prev.itemId);
+        return {prev,prevExtras,prevFree,u,prevMain};
+      };
+      const applyCopiedItems=(prev,pickedBars,pickedFree)=>{
+        let added=0,skipped=0;
+        pickedBars.forEach(bc=>{
+          if(extraItems.includes(bc)){skipped++;return;}
+          const it=findByBarcode(state.inventory,bc);
+          if(!it){skipped++;return;}
+          if(it.journalId===camerasJ&&String(it.id)!==String(o.itemId)){skipped++;return;}
+          extraItems.push(bc);added++;
+        });
+        pickedFree.forEach(txt=>{
+          if(freeTextItems.includes(txt)){skipped++;return;}
+          freeTextItems.push(txt);added++;
+        });
+        if(listFilterQ){listFilterQ=''; if(listFilterInp) listFilterInp.value='';}
+        if(['סופק','הוחזר חלקית'].includes(o.status)) autoSaveReturnsUi(); else autoSave();
+        renderList();
+        closeCopyImportUi();
+        msgEl.innerHTML=`<div class="alert alert-success">✓ הועתקו ${added} פריטים מהזמנה #${prev.orderNum||'—'}${skipped>0?' | '+skipped+' פריטים דולגו':''}</div>`;
+        setTimeout(()=>msgEl.innerHTML='',3200);
+      };
+      const openSelectivePicker=(payload)=>{
+        closeSelectivePicker();
+        const rows=[];
+        payload.prevExtras.forEach(bc=>{
+          const it=findByBarcode(state.inventory,bc);
+          rows.push({kind:'barcode',val:bc,label:`${it?.name||'ברקוד'} (${bc})`});
+        });
+        payload.prevFree.forEach(txt=>rows.push({kind:'free',val:txt,label:`${txt} (ללא ברקוד)`}));
+        if(!rows.length){msgEl.innerHTML='<div class="alert alert-danger" style="font-weight:700;font-size:13px;border-width:2px">אין פריטים זמינים לייבוא מההזמנה שנבחרה.</div>'; setTimeout(()=>msgEl.innerHTML='',3200); return;}
+        const ov=h('div',{style:{position:'fixed',inset:'0',background:'rgba(0,0,0,0.55)',zIndex:'10020',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}});
+        selectiveOverlay=ov;
+        const box=h('div',{class:'card',style:{width:'min(760px,96vw)',maxHeight:'85vh',overflow:'auto',padding:'14px'}});
+        const checks=[];
+        const list=h('div',{style:{maxHeight:'48vh',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'8px',marginTop:'8px'}});
+        rows.forEach((r,idx)=>{
+          const cb=h('input',{type:'checkbox'});
+          cb.checked=true;
+          checks.push({cb,row:r});
+          list.appendChild(h('label',{style:{display:'flex',gap:'8px',alignItems:'center',padding:'6px 4px',borderBottom:idx<rows.length-1?'1px solid var(--border)':'none',fontSize:'13px',cursor:'pointer'}},cb,h('span',{},r.label)));
+        });
+        const close=()=>{ closeSelectivePicker(); };
+        box.appendChild(h('h3',{style:{fontSize:'15px',fontWeight:'700'}},`בחירת פריטים לייבוא מהזמנה #${payload.prev.orderNum||'—'}`));
+        box.appendChild(h('div',{style:{fontSize:'12px',color:'var(--text3)',marginTop:'4px'}},'בחרו בדיוק אילו פריטים להעתיק מההזמנה הקודמת.'));
+        box.appendChild(list);
+        box.appendChild(h('div',{class:'flex gap-2',style:{marginTop:'10px',justifyContent:'flex-end'}},
+          h('button',{class:'btn btn-secondary',type:'button',onclick:close},'↩ חזרה'),
+          h('button',{class:'btn btn-primary',type:'button',onclick:()=>{
+            const picked=checks.filter(x=>x.cb.checked).map(x=>x.row);
+            if(!picked.length){alert('לא נבחרו פריטים לייבוא.');return;}
+            close();
+            applyCopiedItems(payload.prev,picked.filter(x=>x.kind==='barcode').map(x=>x.val),picked.filter(x=>x.kind==='free').map(x=>x.val));
+          }},'ייבא מסומנים')
+        ));
+        ov.appendChild(box);
+        document.body.appendChild(ov);
+      };
+      const renderModeList=()=>{
+        listHost.innerHTML='';
+        const source=mode==='same_type'?sameTypeOrders:sameMainOrders;
+        if(!source.length){
+          listHost.appendChild(h('div',{style:{fontSize:'12px',color:'var(--text3)',padding:'6px'}},mode==='same_type'?'לא נמצאו הזמנות קודמות עם פריט ראשי מאותו סוג.':'לא נמצאו הזמנות קודמות עם פריט ראשי זהה.'));
+          return;
+        }
+        source.forEach(prev=>{
+          const payload=getPrevPayload(prev);
+          const subtitle=(mode==='same_type')
+            ?`פריט ראשי מקור: ${payload.prevMain?.name||prev.itemName||'—'} (${payload.prevMain?.barcode||prev.itemBarcode||'—'})`
+            :`תאריך שאילה: ${fmt(prev.startDate)} ${prev.startTime||''}`;
+          const actionBtn=mode==='same_type'
+            ?h('button',{class:'btn btn-sm btn-primary',style:{fontSize:'11px'},onclick:()=>openSelectivePicker(payload)},'בחר פריטים')
+            :h('div',{class:'flex gap-2',style:{flexWrap:'wrap',justifyContent:'flex-end'}},
+                h('button',{class:'btn btn-sm btn-primary',style:{fontSize:'11px'},onclick:()=>applyCopiedItems(payload.prev,payload.prevExtras,payload.prevFree)},'העתק הכל'),
+                h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:()=>openSelectivePicker(payload)},'בחר פריטים')
+              );
+          listHost.appendChild(
+            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',padding:'8px',borderBottom:'1px solid var(--border)',fontSize:'13px'}},
+              h('div',{},
+                h('div',{style:{fontWeight:'700'}},`#${prev.orderNum||'—'} — ${payload.u.name}`),
+                h('div',{style:{fontSize:'11px',color:'var(--text3)',marginTop:'2px'}},subtitle)
+              ),
+              actionBtn
+            )
+          );
+        });
+      };
+      const modeSel=h('select',{style:{width:'100%',fontSize:'12px',marginBottom:'8px'}},
+        h('option',{value:'same_main'},'פריט ראשי זהה (כמו היום)'),
+        h('option',{value:'same_type',disabled:!sameTypeOrders.length},'פריט ראשי אחר מאותו סוג (בחירה ידנית)')
+      );
+      modeSel.addEventListener('change',e=>{mode=e.target.value;renderModeList();});
+      body.appendChild(modeSel);
+      body.appendChild(listHost);
+      renderModeList();
+      panel.appendChild(toggleBtn);
+      panel.appendChild(body);
+      return panel;
     })();
     const freeTextInlineSection=(()=>{ if(lockLoanModal) return h('span',{}); const freeInp=h('input',{placeholder:'פריט ללא ברקוד...',style:{flex:1,minWidth:0,height:'28px',fontSize:'11px',padding:'2px 8px'}}); const addFree=()=>{const v=freeInp.value.trim(); if(!v) return; freeTextItems.push(v); freeInp.value=''; if(['סופק','הוחזר חלקית'].includes(o.status)) autoSaveReturnsUi(); else autoSave(); renderList();}; freeInp.addEventListener('keyup',e=>{if(e.key==='Enter')addFree();}); return h('div',{style:{minWidth:0,maxWidth:'340px',width:'100%'}},h('div',{style:{fontSize:'11px',fontWeight:'700',marginBottom:'4px'}},'ללא ברקוד'),h('div',{class:'flex gap-2'},freeInp,h('button',{class:'btn btn-secondary',style:{padding:'4px 8px',fontSize:'11px'},onclick:addFree},'+'))); })();
     const modal=h('div',{class:'modal modal-lg modal-loan-prep'},
@@ -7659,6 +7794,7 @@ function openLoanDetail(o){
           }},'✓ סמן מוכן'),
           ...(!lockLoanModal?[h('button',{class:'btn btn-secondary',style:{borderColor:'var(--danger)',color:'var(--danger)',fontSize:'12px'},onclick:()=>{
             confirmAction('למחוק את כל הרשימה המוכנה? (פריטים נוספים מהמלאי ושורות חופשיות — לא את שורת הפריט הראשי)',()=>{
+              closeCopyImportUi();
               extraItems.length=0;freeTextItems.length=0;
               autoSave();renderList();
             });
