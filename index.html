@@ -8891,9 +8891,14 @@ function renderInventory(){
 
 function renderItemModal(item){
   const {inventory,journals} = state;
-  let form={...item};let batch=1;
+  // FIX: שמור form ב-state כדי שre-render מ-cloudPull לא ידרוס את מה שהמשתמש הקליד
+  const _fkey = item.id||'__new__';
+  const isSameItem = state._itemModalForm && state._itemModalForm.__itemId === _fkey;
+  let form = isSameItem ? state._itemModalForm : {...item, __itemId: _fkey};
+  if(!isSameItem) state._itemModalForm = form;
+  let batch=1;
   const originalForm={...item}; // snapshot for revert
-  const closeModal=()=>setState({modal:null});
+  const closeModal=()=>{state._itemModalForm=null;setState({modal:null});};
   const overlay=h('div',{class:'modal-overlay'});
   const sortedByBarcode=[...(inventory||[])].filter(i=>i&&i.id).sort((a,b)=>String(a.barcode||'').localeCompare(String(b.barcode||'')));
   const currentIdx=sortedByBarcode.findIndex(i=>String(i.id)===String(item.id));
@@ -8902,7 +8907,7 @@ function renderItemModal(item){
     const next=sortedByBarcode[currentIdx+delta];
     if(!next) return;
     // open without closing background
-    state.modal=()=>renderItemModal({...next});
+    state._itemModalForm=null;state.modal=()=>renderItemModal({...next});
     render();
   };
   
