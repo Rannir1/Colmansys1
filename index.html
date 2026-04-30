@@ -4451,7 +4451,15 @@ function renderOrders(){
     ),
     renderOrderListTimeScopeBar(),
     h('div',{class:'flex gap-2 mb-4',style:{flexWrap:'wrap',alignItems:'center'}},
-      (()=>{const i=h('input',{placeholder:'חפש...',value:ordSearch||'',style:{maxWidth:'220px'}});i.addEventListener('input',e=>setStateNoRender({ordSearch:e.target.value})||render());return i})(),
+      (()=>{const i=h('input',{placeholder:'חפש...',value:ordSearch||'',style:{maxWidth:'220px'}});i.addEventListener('input',e=>{
+  const val=e.target.value;
+  const sel=e.target.selectionStart;
+  setStateNoRender({ordSearch:val});
+  render();
+  // שחזר focus ומיקום קורסור אחרי ה-render
+  const ni=document.querySelector('input[placeholder="חפש..."]');
+  if(ni){ni.focus();try{ni.setSelectionRange(sel,sel);}catch(x){}}
+});return i})(),
       ...(isAdmin?[(()=>{
         const s=h('select',{style:{fontSize:'12px',padding:'6px 10px',borderRadius:'8px',border:'1px solid var(--border)',background:'var(--bg2)',maxWidth:'280px'}},
           h('option',{value:'all'},'סדרה: הכל'),
@@ -8891,14 +8899,9 @@ function renderInventory(){
 
 function renderItemModal(item){
   const {inventory,journals} = state;
-  // FIX: שמור form ב-state כדי שre-render מ-cloudPull לא ידרוס את מה שהמשתמש הקליד
-  const _fkey = item.id||'__new__';
-  const isSameItem = state._itemModalForm && state._itemModalForm.__itemId === _fkey;
-  let form = isSameItem ? state._itemModalForm : {...item, __itemId: _fkey};
-  if(!isSameItem) state._itemModalForm = form;
-  let batch=1;
+  let form={...item};let batch=1;
   const originalForm={...item}; // snapshot for revert
-  const closeModal=()=>{state._itemModalForm=null;setState({modal:null});};
+  const closeModal=()=>setState({modal:null});
   const overlay=h('div',{class:'modal-overlay'});
   const sortedByBarcode=[...(inventory||[])].filter(i=>i&&i.id).sort((a,b)=>String(a.barcode||'').localeCompare(String(b.barcode||'')));
   const currentIdx=sortedByBarcode.findIndex(i=>String(i.id)===String(item.id));
@@ -8907,7 +8910,7 @@ function renderItemModal(item){
     const next=sortedByBarcode[currentIdx+delta];
     if(!next) return;
     // open without closing background
-    state._itemModalForm=null;state.modal=()=>renderItemModal({...next});
+    state.modal=()=>renderItemModal({...next});
     render();
   };
   
