@@ -3038,7 +3038,7 @@ function renderLogin(){
       })(),
       h('div',{class:'form-group'},
         h('label',{},'תעודת זהות'),
-        (()=>{const i=h('input',{placeholder:'הזן מספר ת.ז'});i.addEventListener('input',e=>tzVal=e.target.value);i.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin(tzVal,passVal)});return i})()
+        (()=>{const i=h('input',{placeholder:'הזן מספר ת.ז'});i.addEventListener('input',e=>tzVal=e.target.value);i.addEventListener('keydown',e=>{if(e.key==='Enter')doLogin(tzVal,passVal)});requestAnimationFrame(()=>i.focus());return i})()
       ),
       h('div',{class:'form-group'},
         h('label',{},'סיסמה'),
@@ -4452,10 +4452,8 @@ function renderOrders(){
     renderOrderListTimeScopeBar(),
     h('div',{class:'flex gap-2 mb-4',style:{flexWrap:'wrap',alignItems:'center'}},
       (()=>{const i=h('input',{placeholder:'חפש...',value:ordSearch||'',style:{maxWidth:'220px'}});i.addEventListener('input',e=>{
-  const val=e.target.value;
-  const sel=e.target.selectionStart;
-  setStateNoRender({ordSearch:val});
-  render();
+  const val=e.target.value;const sel=e.target.selectionStart;
+  setStateNoRender({ordSearch:val});render();
   const ni=document.querySelector('input[placeholder="חפש..."]');
   if(ni){ni.focus();try{ni.setSelectionRange(sel,sel);}catch(x){}}
 });return i})(),
@@ -8890,21 +8888,247 @@ function renderInventory(){
       }},'📥 ייצא CSV'),
       h('button',{class:'btn btn-danger',onclick:backupInventoryAndReset},'🗑️ איפוס מלאי (עם גיבוי)'),
       h('button',{class:'btn btn-success',onclick:importInventoryReplace},'📂 ייבוא רשימה חדשה'),
-      h('button',{class:'btn btn-secondary',onclick:syncInventoryFromDocument},'🔄 סנכרון ממסמך קיים')
+      h('button',{class:'btn btn-secondary',onclick:syncInventoryFromDocument},'🔄 סנכרון ממסמך קיים'),
+      h('button',{class:'btn btn-secondary',onclick:()=>openCopyPropsModal(selectedIds,rebuildTable)},'📋 העתק מאפיינים')
     ),
     h('div',{class:'card'},paginationTopContainer,tableContainer,paginationContainer)
   );
 }
 
+// ================================================================
+// COPY PROPS MODAL — העתקת מאפייני פריט מקור לפריטים יעד
+// ================================================================
+function openCopyPropsModal(selectedIds, rebuildTable){
+  const inventory = state.inventory;
+
+  // שדות שניתן להעתיק (ברקוד ומספר סידורי אסורים)
+  const COPYABLE_FIELDS = [
+    {key:'name',        label:'שם פריט'},
+    {key:'type',        label:'סוג'},
+    {key:'manufacturer',label:'יצרן'},
+    {key:'location',    label:'מיקום'},
+    {key:'journalId',   label:'יומן',     special:'journal'},
+    {key:'status',      label:'סטטוס'},
+    {key:'loanable',    label:'להשאלה'},
+    {key:'supplier',    label:'ספק'},
+    {key:'purchaseDate',label:'תאריך רכישה'},
+    {key:'warrantyDate',label:'תאריך אחריות'},
+    {key:'price',       label:'מחיר רכישה'},
+    {key:'invoiceNum',  label:'מספר חשבונית'},
+    {key:'notes',       label:'הערות'},
+    {key:'statusNote',  label:'הערת סטטוס'},
+    {key:'image',       label:'תמונת פריט'},
+    {key:'invoiceFile', label:'חשבונית (קובץ)'},
+  ];
+
+  let sourceItem = null;
+  // שדות מסומנים להעתקה — ברירת מחדל: הכל
+  const checkedFields = new Set(COPYABLE_FIELDS.map(f=>f.key));
+  // פריטי יעד — מתחיל עם הפריטים המסומנים בטבלה
+  const targetIds = new Set([...selectedIds]);
+
+  const msgEl = h('div',{});
+
+  // ── DOM elements ──
+  const sourceInfoEl  = h('div',{style:{fontSize:'13px',color:'var(--muted)',minHeight:'24px'}});
+  const fieldsWrap    = h('div',{style:{display:'flex',flexWrap:'wrap',gap:'8px 18px',marginTop:'8px'}});
+  const targetListEl  = h('div',{style:{maxHeight:'180px',overflowY:'auto',border:'1px solid var(--border)',borderRadius:'8px',padding:'6px 8px',marginTop:'6px',minHeight:'40px'}});
+  const targetCountEl = h('div',{style:{fontSize:'12px',color:'var(--muted)',marginTop:'4px'}});
+  const applyBtn      = h('button',{class:'btn btn-primary',style:{marginTop:'4px'},disabled:true,onclick:applyProps},'✅ העתק מאפיינים');
+
+  // ── בניית צ'קבוקסים לשדות ──
+  COPYABLE_FIELDS.forEach(f=>{
+    const chk = h('input',{type:'checkbox',checked:true,style:{width:'auto',cursor:'pointer',accentColor:'var(--accent)'}});
+    chk.addEventListener('change',e=>{
+      if(e.target.checked) checkedFields.add(f.key);
+      else checkedFields.delete(f.key);
+    });
+    fieldsWrap.appendChild(h('label',{style:{display:'flex',alignItems:'center',gap:'5px',fontSize:'12px',cursor:'pointer',userSelect:'none'}},chk,f.label));
+  });
+
+  // ── בחירת פריט מקור ──
+  const sourceSearchInp = h('input',{placeholder:'חפש פריט מקור לפי שם / ברקוד...',style:{width:'100%'}});
+  const sourceSugg      = h('div',{style:{display:'none',position:'absolute',top:'100%',right:0,left:0,zIndex:20,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'8px',maxHeight:'200px',overflowY:'auto'}});
+  const sourceWrap      = h('div',{style:{position:'relative'}},sourceSearchInp,sourceSugg);
+
+  sourceSearchInp.addEventListener('input',()=>{
+    const q = sourceSearchInp.value.trim().toLowerCase();
+    sourceSugg.innerHTML='';
+    if(q.length<1){sourceSugg.style.display='none';return;}
+    const hits = inventory.filter(i=>(i.name||'').toLowerCase().includes(q)||(i.barcode||'').includes(q)).slice(0,40);
+    if(!hits.length){sourceSugg.style.display='none';return;}
+    hits.forEach(item=>{
+      const row=h('div',{style:{padding:'7px 10px',cursor:'pointer',borderBottom:'1px solid var(--border)',fontSize:'13px'}},
+        h('span',{style:{fontWeight:'700'}},item.name||'—'),
+        h('span',{style:{fontSize:'11px',color:'var(--muted)',marginRight:'8px'}},` ברקוד: ${item.barcode||'—'}`)
+      );
+      row.addEventListener('mousedown',e=>{
+        e.preventDefault();
+        sourceItem = item;
+        sourceSearchInp.value = `${item.name} (${item.barcode})`;
+        sourceSugg.style.display='none';
+        sourceInfoEl.innerHTML=`<span style="color:var(--success)">✓ מקור נבחר: <b>${item.name}</b> — ברקוד ${item.barcode}</span>`;
+        updateApplyBtn();
+      });
+      sourceSugg.appendChild(row);
+    });
+    sourceSugg.style.display='block';
+  });
+  sourceSearchInp.addEventListener('blur',()=>setTimeout(()=>{sourceSugg.style.display='none';},150));
+
+  // ── חיפוש פריטי יעד ──
+  const targetSearchInp = h('input',{placeholder:'חפש פריטי יעד לפי שם / ברקוד...',style:{width:'100%'}});
+  const targetSugg      = h('div',{style:{display:'none',position:'absolute',top:'100%',right:0,left:0,zIndex:20,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'8px',maxHeight:'200px',overflowY:'auto'}});
+  const targetWrap      = h('div',{style:{position:'relative'}},targetSearchInp,targetSugg);
+
+  targetSearchInp.addEventListener('input',()=>{
+    const q = targetSearchInp.value.trim().toLowerCase();
+    targetSugg.innerHTML='';
+    if(q.length<1){targetSugg.style.display='none';return;}
+    const hits = inventory.filter(i=>
+      !targetIds.has(i.id) &&
+      ((i.name||'').toLowerCase().includes(q)||(i.barcode||'').includes(q))
+    ).slice(0,40);
+    if(!hits.length){targetSugg.style.display='none';return;}
+    // כפתור "הוסף כולם"
+    const addAll=h('div',{style:{padding:'6px 10px',cursor:'pointer',background:'var(--bg3)',fontWeight:'700',fontSize:'12px',borderBottom:'1px solid var(--border)',color:'var(--accent)'}},`+ הוסף את כל ${hits.length} התוצאות`);
+    addAll.addEventListener('mousedown',e=>{e.preventDefault();hits.forEach(i=>targetIds.add(i.id));targetSugg.style.display='none';targetSearchInp.value='';renderTargetList();updateApplyBtn();});
+    targetSugg.appendChild(addAll);
+    hits.forEach(item=>{
+      const row=h('div',{style:{padding:'7px 10px',cursor:'pointer',borderBottom:'1px solid var(--border)',fontSize:'13px',display:'flex',justifyContent:'space-between',alignItems:'center'}},
+        h('span',{},h('b',{},item.name||'—'),h('span',{style:{fontSize:'11px',color:'var(--muted)',marginRight:'6px'}},` ${item.barcode||'—'}`)),
+        h('span',{style:{fontSize:'11px',color:'var(--accent)'}},'+')
+      );
+      row.addEventListener('mousedown',e=>{
+        e.preventDefault();
+        targetIds.add(item.id);
+        targetSugg.style.display='none';
+        targetSearchInp.value='';
+        renderTargetList();
+        updateApplyBtn();
+      });
+      targetSugg.appendChild(row);
+    });
+    targetSugg.style.display='block';
+  });
+  targetSearchInp.addEventListener('blur',()=>setTimeout(()=>{targetSugg.style.display='none';},150));
+
+  // ── רנדור רשימת יעד ──
+  function renderTargetList(){
+    targetListEl.innerHTML='';
+    if(!targetIds.size){
+      targetListEl.appendChild(h('div',{style:{color:'var(--muted)',fontSize:'12px',padding:'4px'}},'לא נבחרו פריטי יעד'));
+      targetCountEl.textContent='';
+      return;
+    }
+    [...targetIds].forEach(id=>{
+      const item = inventory.find(i=>i.id===id);
+      if(!item) return;
+      const row=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'3px 4px',borderBottom:'1px solid var(--border)',fontSize:'12px'}},
+        h('span',{},h('b',{},item.name),h('span',{style:{color:'var(--muted)',marginRight:'6px'}},` ${item.barcode}`)),
+        h('button',{style:{background:'none',border:'none',cursor:'pointer',color:'var(--danger)',fontSize:'14px',padding:'0 4px'},onclick:()=>{targetIds.delete(id);renderTargetList();updateApplyBtn();}},'✕')
+      );
+      targetListEl.appendChild(row);
+    });
+    targetCountEl.textContent=`סה"כ ${targetIds.size} פריטי יעד`;
+  }
+
+  function updateApplyBtn(){
+    applyBtn.disabled = !sourceItem || targetIds.size===0 || checkedFields.size===0;
+    applyBtn.textContent = sourceItem&&targetIds.size>0
+      ? `✅ העתק ${checkedFields.size} שדות ל-${targetIds.size} פריטים`
+      : '✅ העתק מאפיינים';
+  }
+
+  function applyProps(){
+    if(!sourceItem||!targetIds.size||!checkedFields.size) return;
+    const fieldLabels = COPYABLE_FIELDS.filter(f=>checkedFields.has(f.key)).map(f=>f.label).join(', ');
+    if(!confirm(`להעתיק ${checkedFields.size} שדות מ-"${sourceItem.name}"\nאל ${targetIds.size} פריטים?\n\nשדות: ${fieldLabels}`)) return;
+
+    let changed=0;
+    const inv2 = state.inventory.map(item=>{
+      if(!targetIds.has(item.id)||item.id===sourceItem.id) return item;
+      const upd={...item};
+      for(const key of checkedFields){
+        if(key==='journalId'){
+          // בדוק אם לא נוצרת התנגשות ברקוד ביומן
+          const conflict=findInventoryJournalBarcodeConflict(inv2||state.inventory,item.barcode,sourceItem.journalId,item.id);
+          if(conflict){msgEl.innerHTML=`<div class="alert alert-danger">ברקוד ${item.barcode} כבר קיים ביומן הנבחר — פריט "${item.name}" דולג</div>`;return item;}
+        }
+        upd[key]=sourceItem[key];
+      }
+      changed++;
+      return upd;
+    });
+    setState({inventory:inv2});save(SK.inventory,inv2);
+    if(rebuildTable) rebuildTable();
+    selectedIds.clear&&selectedIds.clear();
+    msgEl.innerHTML=`<div class="alert alert-success">✓ הועתקו מאפיינים ל-${changed} פריטים</div>`;
+    setTimeout(()=>{msgEl.innerHTML='';},3000);
+    targetIds.clear();renderTargetList();updateApplyBtn();
+  }
+
+  // ── בנה את החלון ──
+  const modal = h('div',{class:'modal modal-lg',style:{maxWidth:'680px',direction:'rtl'}},
+    h('h2',{style:{marginBottom:'16px'}},'📋 העתקת מאפיינים'),
+    msgEl,
+
+    // מקור
+    h('div',{class:'form-group'},
+      h('label',{style:{fontWeight:'700'}},'פריט מקור'),
+      h('div',{style:{fontSize:'12px',color:'var(--muted)',marginBottom:'6px'}},'בחר פריט אחד — מאפייניו יועתקו לפריטי היעד'),
+      sourceWrap,
+      sourceInfoEl
+    ),
+
+    // שדות להעתקה
+    h('div',{class:'form-group'},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'}},
+        h('label',{style:{fontWeight:'700',marginBottom:0}},'שדות להעתקה'),
+        h('div',{style:{display:'flex',gap:'8px'}},
+          h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:()=>{COPYABLE_FIELDS.forEach(f=>checkedFields.add(f.key));fieldsWrap.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=true);updateApplyBtn();}},'סמן הכל'),
+          h('button',{class:'btn btn-sm btn-secondary',style:{fontSize:'11px'},onclick:()=>{checkedFields.clear();fieldsWrap.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);updateApplyBtn();}},'נקה הכל')
+        )
+      ),
+      h('div',{style:{background:'var(--bg3)',borderRadius:'8px',padding:'10px'}},fieldsWrap)
+    ),
+
+    // פריטי יעד
+    h('div',{class:'form-group'},
+      h('label',{style:{fontWeight:'700'}},'פריטי יעד'),
+      targetIds.size>0
+        ? h('div',{style:{fontSize:'12px',color:'var(--success)',marginBottom:'4px'}},`✓ ${targetIds.size} פריטים מסומנים מהטבלה נוספו אוטומטית`)
+        : h('span',{}),
+      h('div',{style:{fontSize:'12px',color:'var(--muted)',marginBottom:'6px'}},'חפש פריטים נוספים להוספה לרשימה:'),
+      targetWrap,
+      targetListEl,
+      targetCountEl
+    ),
+
+    // כפתורים
+    h('div',{style:{display:'flex',gap:'10px',justifyContent:'flex-end',marginTop:'8px'}},
+      h('button',{class:'btn btn-secondary',onclick:()=>setState({modal:null})},'סגור'),
+      applyBtn
+    )
+  );
+
+  const ov=h('div',{class:'modal-overlay',onclick:e=>{if(e.target===ov)setState({modal:null});}});
+  ov.appendChild(modal);
+
+  renderTargetList();
+  updateApplyBtn();
+  setState({modal:()=>ov});
+  setTimeout(()=>sourceSearchInp.focus(),80);
+}
+
 function renderItemModal(item){
   const {inventory,journals} = state;
-  // FIX: שמור form ב-state כדי שre-render מ-cloudPull לא ידרוס את מה שהמשתמש הקליד
   const _fkey = item.id||'__new__';
   const isSameItem = state._itemModalForm && state._itemModalForm.__itemId === _fkey;
   let form = isSameItem ? state._itemModalForm : {...item, __itemId: _fkey};
   if(!isSameItem) state._itemModalForm = form;
   let batch=1;
-  const originalForm={...item}; // snapshot for revert
+  const originalForm={...item};
   const closeModal=()=>{state._itemModalForm=null;setState({modal:null});};
   const overlay=h('div',{class:'modal-overlay'});
   const sortedByBarcode=[...(inventory||[])].filter(i=>i&&i.id).sort((a,b)=>String(a.barcode||'').localeCompare(String(b.barcode||'')));
@@ -8976,28 +9200,17 @@ function renderItemModal(item){
       if(c.source==='removed'){
         barcodeWarnEl.innerHTML='';
         const warnTxt=document.createTextNode('ברקוד קיים בפריט שהוצא מהמלאי. ');
-        const delBtn=h('button',{
-          class:'btn btn-danger',
-          style:{fontSize:'10px',padding:'1px 8px',marginRight:'6px'},
-          type:'button',
-          title:'מחק לתמיד מרשימת הוצאו מהמלאי',
-          onclick:()=>{
-            const removedItem=c.item;
-            if(!confirm(`מחק לתמיד את "${removedItem.name||removedItem.barcode}" מרשימת הוצאו מהמלאי?`)) return;
-            const newRemoved=(state.removed||[]).filter(r=>String(r.id||r.barcode)!==String(removedItem.id||removedItem.barcode));
-            state.removed=newRemoved;
-            save(SK.removed,newRemoved);
-            updateBarcodeLiveValidation();
-          }
-        },'🗑 מחק מרשימת הוצאו');
-        barcodeWarnEl.appendChild(warnTxt);
-        barcodeWarnEl.appendChild(delBtn);
-        barcodeWarnEl.style.color='var(--danger)';
-        barcodeInputEl.style.borderColor='var(--danger)';
+        const delBtn=h('button',{class:'btn btn-danger',style:{fontSize:'10px',padding:'1px 8px',marginRight:'6px'},type:'button',title:'מחק לתמיד מרשימת הוצאו מהמלאי',onclick:()=>{
+          const removedItem=c.item;
+          if(!confirm(`מחק לתמיד את "${removedItem.name||removedItem.barcode}" מרשימת הוצאו מהמלאי?`)) return;
+          const newRemoved=(state.removed||[]).filter(r=>String(r.id||r.barcode)!==String(removedItem.id||removedItem.barcode));
+          state.removed=newRemoved;save(SK.removed,newRemoved);updateBarcodeLiveValidation();
+        }},'🗑 מחק מרשימת הוצאו');
+        barcodeWarnEl.appendChild(warnTxt);barcodeWarnEl.appendChild(delBtn);
+        barcodeWarnEl.style.color='var(--danger)';barcodeInputEl.style.borderColor='var(--danger)';
       } else {
         barcodeWarnEl.textContent='ברקוד כבר קיים במלאי — לא ניתן לשמור כפילות.';
-        barcodeWarnEl.style.color='var(--danger)';
-        barcodeInputEl.style.borderColor='var(--danger)';
+        barcodeWarnEl.style.color='var(--danger)';barcodeInputEl.style.borderColor='var(--danger)';
       }
     } else {
       barcodeWarnEl.textContent='✓ הברקוד פנוי';
@@ -9341,13 +9554,9 @@ function renderItemModal(item){
           if(cLive.source==='removed'){
             if(confirm(`ברקוד זה קיים ברשימת הוצאו מהמלאי.\nלמחוק אותו לתמיד מהרשימה ולהמשיך בשמירה?`)){
               const newRemoved=(state.removed||[]).filter(r=>String(r.id||r.barcode)!==String(cLive.item.id||cLive.item.barcode));
-              state.removed=newRemoved;
-              save(SK.removed,newRemoved);
+              state.removed=newRemoved;save(SK.removed,newRemoved);
             } else { return; }
-          } else {
-            alertInventoryJournalBarcodeConflict(cLive,journals);
-            return;
-          }
+          } else {alertInventoryJournalBarcodeConflict(cLive,journals);return;}
         }
         form.loanable=form.loanable==='false'?false:form.loanable==='true'?true:!!form.loanable;
         let inv2=[...state.inventory];
@@ -10700,7 +10909,9 @@ function renderKits(){
       h('div',{},h('h1',{},'🧰 ערכות'),h('p',{},'הגדרת סטים קבועים של פריטים להוספה מהירה להזמנה')),
       h('div',{class:'flex gap-2',style:{alignItems:'center',flexWrap:'wrap',justifyContent:'flex-end'}},
         (()=>{const i=h('input',{placeholder:'חפש ערכה...',value:state.kitsSearch||'',style:{minWidth:'0',width:'100%',maxWidth:'100%',boxSizing:'border-box'}});i.addEventListener('input',e=>{state.kitsSearch=e.target.value;setState({});});return i;})(),
-        h('button',{class:'btn btn-primary',onclick:()=>openKitModal(null)},'+ ערכה חדשה')
+        h('button',{class:'btn btn-primary',onclick:()=>openKitModal(null)},'+ ערכה חדשה'),
+        h('button',{class:'btn btn-secondary',title:'הדפס את כל הערכות',onclick:()=>printAllKits(visibleKits,inventory)},'🖨 הדפס הכל'),
+        h('button',{class:'btn btn-secondary',title:'ייצא את כל הערכות ל-CSV',onclick:()=>exportAllKitsCsv(visibleKits,inventory)},'⬇ CSV הכל')
       )
     ),
     msgEl,
@@ -10723,6 +10934,8 @@ function renderKits(){
                 h('td',{},
                   h('div',{class:'flex gap-2',style:{flexWrap:'wrap'}},
                     h('button',{class:'btn btn-sm btn-secondary',onclick:()=>openKitModal(k)},'ערוך'),
+                    h('button',{class:'btn btn-sm btn-secondary',title:'הדפס ערכה זו',onclick:()=>printSingleKit(k,inventory)},'🖨'),
+                    h('button',{class:'btn btn-sm btn-secondary',title:'ייצא ל-CSV',onclick:()=>exportSingleKitCsv(k,inventory)},'⬇ CSV'),
                     h('button',{class:'btn btn-sm btn-danger',onclick:()=>{
                       confirmAction(`למחוק את הערכה \"${k.name||'—'}\"?`,()=>{
                         saveAll(kits.filter(x=>x.id!==k.id));
@@ -10737,6 +10950,37 @@ function renderKits(){
       )
   );
   return content;
+}
+function kitItemRows(kit,inventory){
+  const rows=[];const mi=kit.mainItemId?inventory.find(i=>String(i.id)===String(kit.mainItemId)):null;
+  if(mi) rows.push({name:mi.name||'—',barcode:mi.barcode||'—',location:mi.location||'—',note:'פריט ראשי'});
+  (kit.items||[]).forEach(it=>{
+    if(it.type==='barcode'){const inv=inventory.find(i=>String(i.barcode)===String(it.val));rows.push({name:inv?inv.name:it.name||it.val||'—',barcode:it.val||'—',location:inv?inv.location||'—':'—',note:''});}
+    else{rows.push({name:it.val||it.name||'—',barcode:'—',location:'—',note:'ללא ברקוד'});}
+  });return rows;
+}
+function printSingleKit(kit,inventory){
+  const rows=kitItemRows(kit,inventory);const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const trs=rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${esc(r.barcode)}</td><td>${esc(r.location)}</td><td>${esc(r.note)}</td></tr>`).join('');
+  const html=`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>ערכה: ${esc(kit.name)}</title><style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;font-size:13px}h2{margin:0 0 4px}p.sub{margin:0 0 14px;color:#555;font-size:12px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:6px 8px;text-align:right}th{background:#f0f0f0}tr:nth-child(even){background:#fafafa}</style></head><body><h2>🧰 ${esc(kit.name)}</h2><p class="sub">סה"כ ${rows.length} פריטים | ${new Date().toLocaleString('he-IL')}</p><table><thead><tr><th>#</th><th>שם פריט</th><th>ברקוד</th><th>מיקום</th><th>הערה</th></tr></thead><tbody>${trs}</tbody></table><script>window.onload=()=>window.print();<\/script></body></html>`;
+  const w=window.open('','_blank','width=900,height=700');if(w){w.document.write(html);w.document.close();}
+}
+function exportSingleKitCsv(kit,inventory){
+  const rows=kitItemRows(kit,inventory);const esc=(s)=>{const v=String(s||'');return v.includes(',')||v.includes('"')||v.includes('\n')?`"${v.replace(/"/g,'""')}"`:v;};
+  const lines=[['#','שם פריט','ברקוד','מיקום','הערה'].map(esc).join(','),...rows.map((r,i)=>[i+1,r.name,r.barcode,r.location,r.note].map(esc).join(','))];
+  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ערכה_${kit.name.replace(/[^\w\u0590-\u05FF]/g,'_')}.csv`;a.click();
+}
+function printAllKits(kits,inventory){
+  const esc=(s)=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const sections=kits.map(kit=>{const rows=kitItemRows(kit,inventory);const trs=rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.name)}</td><td>${esc(r.barcode)}</td><td>${esc(r.location)}</td><td>${esc(r.note)}</td></tr>`).join('');return `<div class="kit-section"><h3>🧰 ${esc(kit.name)}</h3><p class="sub">סה"כ ${rows.length} פריטים</p><table><thead><tr><th>#</th><th>שם פריט</th><th>ברקוד</th><th>מיקום</th><th>הערה</th></tr></thead><tbody>${trs}</tbody></table></div>`;}).join('');
+  const html=`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>כל הערכות</title><style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;font-size:13px}h2,h3{margin:0 0 4px}p.sub{margin:0 0 8px;color:#555;font-size:12px}.kit-section{margin-bottom:32px;page-break-inside:avoid}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:5px 8px;text-align:right}th{background:#f0f0f0}@media print{.kit-section{page-break-after:always}}</style></head><body><h2>🧰 כל הערכות</h2><p class="sub">סה"כ ${kits.length} ערכות | ${new Date().toLocaleString('he-IL')}</p>${sections}<script>window.onload=()=>window.print();<\/script></body></html>`;
+  const w=window.open('','_blank','width=1000,height=800');if(w){w.document.write(html);w.document.close();}
+}
+function exportAllKitsCsv(kits,inventory){
+  const esc=(s)=>{const v=String(s||'');return v.includes(',')||v.includes('"')||v.includes('\n')?`"${v.replace(/"/g,'""')}"`:v;};
+  const lines=[['ערכה','#','שם פריט','ברקוד','מיקום','הערה'].map(esc).join(',')];
+  kits.forEach(kit=>{const rows=kitItemRows(kit,inventory);rows.forEach((r,i)=>lines.push([kit.name,i+1,r.name,r.barcode,r.location,r.note].map(esc).join(',')));lines.push('');});
+  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='כל_הערכות.csv';a.click();
 }
 
 // ============================================================
