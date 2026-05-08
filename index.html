@@ -1923,9 +1923,11 @@ function getConflicts(itemId, startDate, endDate, startTime, endTime, excludeOrd
   return state.orders.filter(o=>{
     if(excludeOrderId && o.id===excludeOrderId) return false;
     if(o.status==='נדחתה'||o.status==='נמחקה') return false;
-    if(o.startDate>endDate||o.endDate<startDate) return false;
+    const effectiveEndDate=o.actualReturnDate||o.endDate;
+    const effectiveEndTime=o.actualReturnTime||o.endTime;
+    if(o.startDate>endDate||effectiveEndDate<startDate) return false;
     const ordStartMs=toMs(o.startDate,o.startTime,0);
-    const ordEndMs=toMs(o.endDate,o.endTime,23*60+59);
+    const ordEndMs=toMs(effectiveEndDate,effectiveEndTime,23*60+59);
     if(ordStartMs==null||ordEndMs==null) return false;
     if(!(reqStartMs<ordEndMs && reqEndMs>ordStartMs)) return false;
     const reserves=orderReservesInventoryId(o,itemId);
@@ -1943,7 +1945,8 @@ function getConflicts(itemId, startDate, endDate, startTime, endTime, excludeOrd
 function getReservationsForItemInDateRange(itemId, fromYmd, toYmd){
   return state.orders.filter(o=>{
     if(o.status==='נדחתה'||o.status==='נמחקה') return false;
-    if(o.startDate>toYmd||o.endDate<fromYmd) return false;
+    const effectiveEndDate=o.actualReturnDate||o.endDate;
+    if(o.startDate>toYmd||effectiveEndDate<fromYmd) return false;
     return orderReservesInventoryId(o,itemId);
   }).sort((a,b)=>{
     const ka=(a.startDate||'')+' '+String(a.startTime||'00:00');
