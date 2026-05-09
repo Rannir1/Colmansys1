@@ -8387,14 +8387,18 @@ function renderInventory(){
   const summaryEl=h('p',{});
   const selectedIds=new Set();
   const bulkPanelEl=h('div',{});
-  // Inventory table should be sorted by barcode, not by insertion date.
-  // This keeps items that were re-added to inventory (e.g. 55449) next to their numeric neighbors.
-  const compareInventoryByBarcode=(a,b)=>{
-    const ab=String(a?.barcode||a?.id||'').trim();
-    const bb=String(b?.barcode||b?.id||'').trim();
-    const byBarcode=ab.localeCompare(bb,'he',{numeric:true,sensitivity:'base'});
-    if(byBarcode) return byBarcode;
-    return String(a?.name||'').localeCompare(String(b?.name||''),'he',{numeric:true,sensitivity:'base'});
+  // Inventory table default order is the actual inventory array order (insertion order).
+  // Restored items are inserted back near their barcode neighbors instead of being appended to the end.
+  const inventoryBarcodeSortKey=(item)=>String(item?.barcode||item?.id||'').trim();
+  const compareInventoryByBarcode=(a,b)=>inventoryBarcodeSortKey(a).localeCompare(inventoryBarcodeSortKey(b),'he',{numeric:true,sensitivity:'base'});
+  const insertRestoredInventoryItem=(inv,item)=>{
+    const arr=[...(inv||[])];
+    const key=inventoryBarcodeSortKey(item);
+    if(!key){arr.push(item);return arr;}
+    const idx=arr.findIndex(x=>compareInventoryByBarcode(x,item)>0);
+    if(idx<0) arr.push(item);
+    else arr.splice(idx,0,item);
+    return arr;
   };
 
   const updateBulkPanel=()=>{
@@ -8581,7 +8585,7 @@ function renderInventory(){
         if(curCounted==='uncounted'&&sc[i.id]) return false;
       }
       return true;
-    }).sort(compareInventoryByBarcode);
+    });
     const pages=Math.ceil(filtered.length/PAGE_SIZE)||1;
     const curPage=Math.min(pg,pages);
     state.invPage=curPage;
@@ -10611,7 +10615,9 @@ function renderRemovedInventory(){
         if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
         if(!confirm(`להחזיר את "${item.name}" למלאי?`)) return;
         const {removedAt,reason,removeReason,...restored}=item;
-        const inv2=[...state.inventory,{...restored,status:'תקין'}];
+        const inv2=(typeof insertRestoredInventoryItem==='function')
+          ? insertRestoredInventoryItem(state.inventory,{...restored,status:'תקין'})
+          : [...state.inventory,{...restored,status:'תקין'}];
         const removed2=state.removed.filter(r=>r.id!==item.id);
         setState({inventory:inv2,removed:removed2});
         save(SK.inventory,inv2);save(SK.removed,removed2);
@@ -10622,7 +10628,9 @@ function renderRemovedInventory(){
         if(!confirm(`להחזיר את "${item.name}" ולפתוח מיד לעריכה?`)) return;
         const {removedAt,reason,removeReason,...restored}=item;
         const restoredItem={...restored,status:'תקין'};
-        const inv2=[...state.inventory,restoredItem];
+        const inv2=(typeof insertRestoredInventoryItem==='function')
+          ? insertRestoredInventoryItem(state.inventory,restoredItem)
+          : [...state.inventory,restoredItem];
         const removed2=state.removed.filter(r=>r.id!==item.id);
         setState({inventory:inv2,removed:removed2,modal:()=>renderItemModal({...restoredItem})});
         save(SK.inventory,inv2);save(SK.removed,removed2);
