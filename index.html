@@ -1220,10 +1220,10 @@ const nextOrderNum=()=>{const nums=state.orders.map(o=>o.orderNum||0);const max=
 // Barcode lookup — ignores leading zeros (055431 === 55431)
 function getUserName(userId){
   if(!userId) return '—';
-  const u=state.users.find(u=>u.id===userId);
-  if(u) return u.name;
-  // Check if it's the current anonymous user
-  const o=state.orders.find(o=>o.userId===userId);
+  const u=state.users.find(u=>String(u.id)===String(userId));
+  if(u?.name) return u.name;
+  // fallback only to explicit stored snapshot name
+  const o=state.orders.find(o=>String(o.userId)===String(userId)&&o.userName);
   if(o?.userName) return o.userName;
   if(userId==='anon_preview') return 'משתמש אנונימי';
   return '—';
@@ -3416,7 +3416,7 @@ function renderDashboard(){
         return h('div',{style:{display:'flex',flexDirection:'column',gap:'6px'}},
           ...todayOrders.map(o=>{
             const item=inventory.find(i=>i.id===o.itemId);
-            const u=users.find(u=>u.id===o.userId)||{name:getUserName(o.userId)};
+            const u=users.find(u=>u.id===o.userId)||{name:(o.userName||getUserName(o.userId))};
             const effectiveEndDate=o.actualReturnDate||o.endDate;
             const isStart=o.startDate===tod;
             const isEnd=o.endDate===tod;
@@ -4281,7 +4281,7 @@ function openBulkOrderModal(preJournalId, preDate, preUserId){
               }
               const item=inventory.find(i=>i.id===itemId);
               const mdNote=dList.length>=2?' | תאריכים נבחרים (קבוצתי)':'';
-              allNewOrders.push({id:genId(),orderNum:baseNum+idx++,userId:form.userId,itemId,itemName:item?.name||'—',itemBarcode:item?.barcode||'',startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,purpose:form.purpose,notes:(form.notes||'')+mdNote,status:'אושרה',createdAt:new Date().toISOString(),journalId:form.journalId,bulkGroupId:groupId,multiDateGroupId:dList.length>=2?groupId:undefined});
+              allNewOrders.push({id:genId(),orderNum:baseNum+idx++,userId:form.userId,userName:(users.find(u=>String(u.id)===String(form.userId))?.name||''),itemId,itemName:item?.name||'—',itemBarcode:item?.barcode||'',startDate:d,endDate:d,startTime:t.startTime,endTime:t.endTime,purpose:form.purpose,notes:(form.notes||'')+mdNote,status:'אושרה',createdAt:new Date().toISOString(),journalId:form.journalId,bulkGroupId:groupId,multiDateGroupId:dList.length>=2?groupId:undefined});
             });
           });
           if(!allNewOrders.length){msgEl.innerHTML='<div class="alert alert-danger">כל הצירופים תפוסים או לא תקפים</div>';return;}
@@ -4440,6 +4440,16 @@ function renderOrders(){
   const STATS=['all','cancel_pending','cancel_rejected','מחכה לאישור','אושרה','סופק','הוחזר חלקית','הוחזר','לא נלקחה','נדחתה'];
   const tableColCount=7+(isAdmin?2:0);
   const selMap=state.orderListSelection||{};
+  const setOrderListSelectionPreserveScroll=(next)=>{
+    const mainEl=document.querySelector('.main');
+    const scrollTop=mainEl?mainEl.scrollTop:window.scrollY;
+    setState({orderListSelection:next});
+    requestAnimationFrame(()=>{
+      const el=document.querySelector('.main');
+      if(el) el.scrollTop=scrollTop;
+      else window.scrollTo(0,scrollTop);
+    });
+  };
   const allVisibleSelected=filtered.length>0&&filtered.every(o=>selMap[o.id]);
   return h('div',{},
     h('div',{class:'page-header flex items-center justify-between'},
@@ -4477,9 +4487,9 @@ function renderOrders(){
         h('button',{class:'btn btn-sm btn-secondary',onclick:()=>{
           const next={...selMap};
           filtered.forEach(o=>{next[o.id]=true;});
-          setState({orderListSelection:next});
+          setOrderListSelectionPreserveScroll(next);
         }},'בחר הכל בתצוגה'),
-        h('button',{class:'btn btn-sm btn-secondary',onclick:()=>setState({orderListSelection:{}})},'נקה בחירה'),
+        h('button',{class:'btn btn-sm btn-secondary',onclick:()=>setOrderListSelectionPreserveScroll({})},'נקה בחירה'),
         h('button',{class:'btn btn-sm btn-danger',onclick:()=>adminBulkDeleteSelectedOrders()},'מחק נבחרות')
       ]:[]),
       h('div',{class:'tabs'},
@@ -4492,11 +4502,12 @@ function renderOrders(){
           h('thead',{},h('tr',{},
             ...(isAdmin?[h('th',{style:{width:'40px',textAlign:'center'},title:'בחירה למחיקה מרוכזת'},(()=>{
               const cb=h('input',{type:'checkbox',checked:allVisibleSelected});
+              cb.addEventListener('click',e=>e.stopPropagation());
               cb.addEventListener('change',()=>{
                 const next={...selMap};
                 if(allVisibleSelected) filtered.forEach(o=>{delete next[o.id];});
                 else filtered.forEach(o=>{next[o.id]=true;});
-                setState({orderListSelection:next});
+                setOrderListSelectionPreserveScroll(next);
               });
               return cb;
             })())]:[]),
@@ -4513,10 +4524,11 @@ function renderOrders(){
               return h('tr',{},
                 ...(isAdmin?[h('td',{style:{textAlign:'center',verticalAlign:'middle'}},(()=>{
                   const cb=h('input',{type:'checkbox',checked:!!selMap[o.id]});
+                  cb.addEventListener('click',e=>e.stopPropagation());
                   cb.addEventListener('change',()=>{
                     const next={...selMap};
                     if(next[o.id]) delete next[o.id]; else next[o.id]=true;
-                    setState({orderListSelection:next});
+                    setOrderListSelectionPreserveScroll(next);
                   });
                   return cb;
                 })())]:[]),
@@ -8375,6 +8387,15 @@ function renderInventory(){
   const summaryEl=h('p',{});
   const selectedIds=new Set();
   const bulkPanelEl=h('div',{});
+  // Inventory table should be sorted by barcode, not by insertion date.
+  // This keeps items that were re-added to inventory (e.g. 55449) next to their numeric neighbors.
+  const compareInventoryByBarcode=(a,b)=>{
+    const ab=String(a?.barcode||a?.id||'').trim();
+    const bb=String(b?.barcode||b?.id||'').trim();
+    const byBarcode=ab.localeCompare(bb,'he',{numeric:true,sensitivity:'base'});
+    if(byBarcode) return byBarcode;
+    return String(a?.name||'').localeCompare(String(b?.name||''),'he',{numeric:true,sensitivity:'base'});
+  };
 
   const updateBulkPanel=()=>{
     bulkPanelEl.innerHTML='';
@@ -8560,7 +8581,7 @@ function renderInventory(){
         if(curCounted==='uncounted'&&sc[i.id]) return false;
       }
       return true;
-    });
+    }).sort(compareInventoryByBarcode);
     const pages=Math.ceil(filtered.length/PAGE_SIZE)||1;
     const curPage=Math.min(pg,pages);
     state.invPage=curPage;
@@ -8921,6 +8942,7 @@ function openCopyPropsModal(selectedIds, rebuildTable){
     {key:'notes',       label:'הערות'},
     {key:'statusNote',  label:'הערת סטטוס'},
     {key:'image',       label:'תמונת פריט'},
+    {key:'photo',       label:'תמונת פריט (תאימות לגרסאות ישנות)'},
     {key:'invoiceFile', label:'חשבונית (קובץ)'},
   ];
 
@@ -9045,25 +9067,53 @@ function openCopyPropsModal(selectedIds, rebuildTable){
 
   function applyProps(){
     if(!sourceItem||!targetIds.size||!checkedFields.size) return;
-    const fieldLabels = COPYABLE_FIELDS.filter(f=>checkedFields.has(f.key)).map(f=>f.label).join(', ');
-    if(!confirm(`להעתיק ${checkedFields.size} שדות מ-"${sourceItem.name}"\nאל ${targetIds.size} פריטים?\n\nשדות: ${fieldLabels}`)) return;
 
+    const sourceId=String(sourceItem.id||'');
+    const targets=[...targetIds].map(String).filter(id=>id&&id!==sourceId);
+    if(!targets.length){
+      msgEl.innerHTML='<div class="alert alert-warning">לא נבחרו פריטי יעד תקינים להעתקה.</div>';
+      return;
+    }
+
+    const fieldLabels = COPYABLE_FIELDS.filter(f=>checkedFields.has(f.key)).map(f=>f.label).join(', ');
+    if(!confirm(`להעתיק ${checkedFields.size} שדות מ-"${sourceItem.name}"
+אל ${targets.length} פריטים?
+
+שדות: ${fieldLabels}`)) return;
+
+    const targetSet=new Set(targets);
+    const safeFields=[...checkedFields].filter(key=>!['id','barcode','serial'].includes(key));
     let changed=0;
+
     const inv2 = state.inventory.map(item=>{
-      if(!targetIds.has(item.id)||item.id===sourceItem.id) return item;
+      if(!targetSet.has(String(item.id||''))) return item;
       const upd={...item};
-      for(const key of checkedFields){
-        if(key==='journalId'){
-          // בדוק אם לא נוצרת התנגשות ברקוד ביומן
-          const conflict=findInventoryJournalBarcodeConflict(inv2||state.inventory,item.barcode,sourceItem.journalId,item.id);
-          if(conflict){msgEl.innerHTML=`<div class="alert alert-danger">ברקוד ${item.barcode} כבר קיים ביומן הנבחר — פריט "${item.name}" דולג</div>`;return item;}
+      for(const key of safeFields){
+        // compatibility: older inventory views used photo, newer item editor uses image
+        if(key==='photo'){
+          upd.photo=sourceItem.photo||sourceItem.image||'';
+        } else if(key==='image'){
+          upd.image=sourceItem.image||sourceItem.photo||'';
+        } else if(key==='invoiceFile'){
+          upd.invoiceFile=sourceItem.invoiceFile||'';
+          if(Object.prototype.hasOwnProperty.call(sourceItem,'invoiceName')) upd.invoiceName=sourceItem.invoiceName||'';
+        } else if(Object.prototype.hasOwnProperty.call(sourceItem,key)){
+          upd[key]=sourceItem[key];
+        } else {
+          upd[key]='';
         }
-        upd[key]=sourceItem[key];
       }
       changed++;
       return upd;
     });
-    setState({inventory:inv2});save(SK.inventory,inv2);
+
+    if(!changed){
+      msgEl.innerHTML='<div class="alert alert-warning">לא בוצע שינוי — לא נמצאו פריטי יעד.</div>';
+      return;
+    }
+
+    state.inventory=inv2;
+    save(SK.inventory,inv2);
     if(rebuildTable) rebuildTable();
     selectedIds.clear&&selectedIds.clear();
     msgEl.innerHTML=`<div class="alert alert-success">✓ הועתקו מאפיינים ל-${changed} פריטים</div>`;
@@ -11787,7 +11837,7 @@ function renderReports(){
     const tbody=h('tbody',{});
     f.slice(0,200).forEach(o=>{
       const it=inventory.find(i=>i.id===o.itemId);
-      const u=users.find(u=>u.id===o.userId)||{name:getUserName(o.userId)};
+      const u=users.find(u=>u.id===o.userId)||{name:(o.userName||getUserName(o.userId))};
       const jName=journals.find(j=>j.id===it?.journalId)?.name||'—';
       tbody.appendChild(h('tr',{style:{cursor:'pointer'},onclick:()=>{state.modal=()=>renderOrderDetailModal(o);render();}},
         h('td',{style:{fontSize:'11px',color:'var(--text3)'}},`#${o.orderNum||'—'}`),
