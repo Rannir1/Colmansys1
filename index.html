@@ -8416,12 +8416,39 @@ function renderInventory(){
   // If a previously removed item is restored, put it back according to its original ALL_INVENTORY position.
   // Newer items that are not in ALL_INVENTORY keep their current array order.
   const inventoryOriginalOrderMap=new Map((ALL_INVENTORY||[]).map((it,idx)=>[String(it.id||it.barcode||''),idx]));
+  // Numeric barcode anchors from the original import. Used only for restored/unknown rows
+  // so an item like 055449 can appear between 055448 and 055450 without sorting the whole inventory by barcode.
+  const inventoryOriginalBarcodeAnchors=(ALL_INVENTORY||[]).map((it,idx)=>{
+    const raw=String(it?.barcode||it?.id||'').trim();
+    const digits=raw.replace(/[^0-9]/g,'');
+    return {n:digits?parseInt(digits,10):NaN,idx};
+  }).filter(x=>Number.isFinite(x.n)).sort((a,b)=>a.n-b.n);
+  const inventoryInferredBarcodeOrderKey=(item,fallbackIndex)=>{
+    const raw=String(item?.barcode||item?.id||'').trim();
+    const digits=raw.replace(/[^0-9]/g,'');
+    if(!digits) return 1000000000+(Number.isFinite(fallbackIndex)?fallbackIndex:0);
+    const n=parseInt(digits,10);
+    if(!Number.isFinite(n)) return 1000000000+(Number.isFinite(fallbackIndex)?fallbackIndex:0);
+    let prev=null,next=null;
+    for(const a of inventoryOriginalBarcodeAnchors){
+      if(a.n<n) prev=a;
+      else if(a.n>n){next=a;break;}
+    }
+    if(prev&&next&&next.idx>prev.idx){
+      const frac=(n-prev.n)/Math.max(1,(next.n-prev.n));
+      return prev.idx+Math.max(0.000001,Math.min(0.999999,frac));
+    }
+    // If only a previous anchor exists, place immediately after it but before truly new appended rows.
+    if(prev) return prev.idx+0.5;
+    if(next) return Math.max(0,next.idx-0.5);
+    return 1000000000+(Number.isFinite(fallbackIndex)?fallbackIndex:0);
+  };
   const inventoryDisplayOrderKey=(item,fallbackIndex)=>{
     const idKey=String(item?.id||'');
     const bcKey=String(item?.barcode||'');
     if(inventoryOriginalOrderMap.has(idKey)) return inventoryOriginalOrderMap.get(idKey);
     if(inventoryOriginalOrderMap.has(bcKey)) return inventoryOriginalOrderMap.get(bcKey);
-    return 1000000000+(Number.isFinite(fallbackIndex)?fallbackIndex:0);
+    return inventoryInferredBarcodeOrderKey(item,fallbackIndex);
   };
   const inventoryBarcodeSortKey=(item)=>String(item?.barcode||item?.id||'').trim();
   const compareInventoryByBarcode=(a,b)=>inventoryBarcodeSortKey(a).localeCompare(inventoryBarcodeSortKey(b),'he',{numeric:true,sensitivity:'base'});
@@ -10659,7 +10686,7 @@ function renderRemovedInventory(){
         if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
         if(!confirm(`להחזיר את "${item.name}" למלאי?`)) return;
         const {removedAt,reason,removeReason,...restored}=item;
-        const inv2=insertRestoredInventoryItemGlobal(state.inventory,{...restored,status:'תקין'});
+        const inv2=insertRestoredInventoryItemGlobal(state.inventory,{...restored,status:'תקין',restoredAt:new Date().toISOString()});
         const removed2=state.removed.filter(r=>r.id!==item.id);
         setState({inventory:inv2,removed:removed2});
         save(SK.inventory,inv2);save(SK.removed,removed2);
@@ -10669,7 +10696,7 @@ function renderRemovedInventory(){
         if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
         if(!confirm(`להחזיר את "${item.name}" ולפתוח מיד לעריכה?`)) return;
         const {removedAt,reason,removeReason,...restored}=item;
-        const restoredItem={...restored,status:'תקין'};
+        const restoredItem={...restored,status:'תקין',restoredAt:new Date().toISOString()};
         const inv2=insertRestoredInventoryItemGlobal(state.inventory,restoredItem);
         const removed2=state.removed.filter(r=>r.id!==item.id);
         setState({inventory:inv2,removed:removed2,modal:()=>renderItemModal({...restoredItem})});
