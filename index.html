@@ -8264,6 +8264,31 @@ function renderLoans(){
   );
 }
 
+
+// Global helper: restore removed inventory items near their barcode neighbors
+// without changing the full inventory display order.
+function insertRestoredInventoryItemGlobal(inv,item){
+  const arr=[...(inv||[])];
+  const bcNum=(x)=>{
+    const s=String(x?.barcode||x?.id||x||'').replace(/[^0-9]/g,'');
+    return s?parseInt(s,10):NaN;
+  };
+  const target=bcNum(item);
+  if(!Number.isFinite(target)){arr.push(item);return arr;}
+  let bestBefore=-1,bestBeforeVal=-Infinity;
+  let bestAfter=-1,bestAfterVal=Infinity;
+  arr.forEach((x,i)=>{
+    const n=bcNum(x);
+    if(!Number.isFinite(n)) return;
+    if(n<target&&n>bestBeforeVal){bestBeforeVal=n;bestBefore=i;}
+    if(n>target&&n<bestAfterVal){bestAfterVal=n;bestAfter=i;}
+  });
+  if(bestBefore>=0){arr.splice(bestBefore+1,0,item);return arr;}
+  if(bestAfter>=0){arr.splice(bestAfter,0,item);return arr;}
+  arr.push(item);
+  return arr;
+}
+
 // ============================================================
 // INVENTORY
 // ============================================================
@@ -10634,9 +10659,7 @@ function renderRemovedInventory(){
         if(c){alert('לא ניתן להחזיר: הברקוד כבר קיים במלאי.');return;}
         if(!confirm(`להחזיר את "${item.name}" למלאי?`)) return;
         const {removedAt,reason,removeReason,...restored}=item;
-        const inv2=(typeof insertRestoredInventoryItem==='function')
-          ? insertRestoredInventoryItem(state.inventory,{...restored,status:'תקין'})
-          : [...state.inventory,{...restored,status:'תקין'}];
+        const inv2=insertRestoredInventoryItemGlobal(state.inventory,{...restored,status:'תקין'});
         const removed2=state.removed.filter(r=>r.id!==item.id);
         setState({inventory:inv2,removed:removed2});
         save(SK.inventory,inv2);save(SK.removed,removed2);
@@ -10647,9 +10670,7 @@ function renderRemovedInventory(){
         if(!confirm(`להחזיר את "${item.name}" ולפתוח מיד לעריכה?`)) return;
         const {removedAt,reason,removeReason,...restored}=item;
         const restoredItem={...restored,status:'תקין'};
-        const inv2=(typeof insertRestoredInventoryItem==='function')
-          ? insertRestoredInventoryItem(state.inventory,restoredItem)
-          : [...state.inventory,restoredItem];
+        const inv2=insertRestoredInventoryItemGlobal(state.inventory,restoredItem);
         const removed2=state.removed.filter(r=>r.id!==item.id);
         setState({inventory:inv2,removed:removed2,modal:()=>renderItemModal({...restoredItem})});
         save(SK.inventory,inv2);save(SK.removed,removed2);
