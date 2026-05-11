@@ -3315,23 +3315,34 @@ function renderSearchResults(){
             orderBadge(o.status)
           );
         }),
-        section('🗄️ מלאי',matchInventory,i=>h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--border)'}},
+        section('🗄️ מלאי',matchInventory,i=>h('div',{
+          style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid var(--border)',cursor:'pointer'},
+          title:'פתח פריט',
+          onclick:()=>{state.modal=()=>renderItemModal({...i});render();}
+        },
           h('div',{},
             h('div',{style:{fontWeight:'600',fontSize:'13px'}},i.name),
             h('div',{style:{fontSize:'12px',color:'var(--text3)'}},`ברקוד: ${i.barcode} | ${i.type||'—'} | ${statusBadge(i.status)?i.status:''}`)
           ),
-          isAdmin?h('button',{class:'btn btn-sm btn-primary',onclick:()=>openOrderModal(i.id,i.journalId,today())},'+ הזמנה'):h('span',{})
+          isAdmin?h('div',{class:'flex gap-2'}, 
+            h('button',{class:'btn btn-sm btn-secondary',onclick:(e)=>{e.stopPropagation();state.modal=()=>renderItemModal({...i});render();}},'✏️ ערוך'),
+            h('button',{class:'btn btn-sm btn-primary',onclick:(e)=>{e.stopPropagation();openOrderModal(i.id,i.journalId,today());}},'+ הזמנה')
+          ):h('span',{})
         )),
-        section('👥 משתמשים',matchUsers,u=>h('div',{style:{display:'flex',alignItems:'center',gap:'8px',padding:'8px 0',borderBottom:'1px solid var(--border)',flexWrap:'wrap'}},
+        section('👥 משתמשים',matchUsers,u=>h('div',{
+          style:{display:'flex',alignItems:'center',gap:'8px',padding:'8px 0',borderBottom:'1px solid var(--border)',flexWrap:'wrap',cursor:isAdmin?'pointer':'default'},
+          title:isAdmin?'פתח משתמש':'',
+          onclick:()=>{if(isAdmin){state.modal=()=>renderUserModal({...u});render();}}
+        },
           h('div',{style:{flex:1}},
             h('div',{style:{fontWeight:'600',fontSize:'13px'}},u.name),
             h('div',{style:{fontSize:'12px',color:'var(--text3)'}},`ת.ז: ${u.tz}${u.email?' | '+u.email:''}`)
           ),
           waBtn(u.phone),
           ...(isAdmin?[
-            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>{state.modal=()=>renderUserModal({...u});render();}},'👤 פרטים'),
-            h('button',{class:'btn btn-sm btn-primary',onclick:()=>openOrderModal(null,null,today(),null,null,u.id)},'+ הזמנה'),
-            h('button',{class:'btn btn-sm btn-secondary',onclick:()=>openBulkOrderModal(null,today(),u.id)},'📋 הזמנה קבוצתית')
+            h('button',{class:'btn btn-sm btn-secondary',onclick:(e)=>{e.stopPropagation();state.modal=()=>renderUserModal({...u});render();}},'👤 פרטים / עריכה'),
+            h('button',{class:'btn btn-sm btn-primary',onclick:(e)=>{e.stopPropagation();openOrderModal(null,null,today(),null,null,u.id)}},'+ הזמנה'),
+            h('button',{class:'btn btn-sm btn-secondary',onclick:(e)=>{e.stopPropagation();openBulkOrderModal(null,today(),u.id)}},'📋 הזמנה קבוצתית')
           ]:[])
         ))
       )
