@@ -220,7 +220,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 </head>
-<body><div style="position:fixed;left:10px;bottom:10px;z-index:99999;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:6px 12px;font:700 12px Arial">UPLOADED_HTML_SAFE_FIX_v20_MINIMAL_SPACING</div>
+<body><div style="position:fixed;left:10px;bottom:10px;z-index:99999;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:6px 12px;font:700 12px Arial">SAFE_FIX_v21_TWO_ROWS</div>
 <div id="root"></div>
 <script>
 // ============================================================
@@ -3673,11 +3673,18 @@ function renderJournals(){
           onclick:()=>setState({journalDate:today()})
         },'היום');
         // RTL: עבר בימין, עתיד בשמאל — סדר DOM עם direction:rtl שם יום קודם בימין, יום הבא בשמאל
-        const center=h('div',{class:'journal-day-center'},calBtn,dayLabel,todayBtn);
-        const wrap=h('div',{class:'journal-day-nav'},
-          h('button',{class:'btn btn-secondary',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום קודם (עבר)',onclick:prevDay},'→'),
+        // SAFE_FIX_v21:
+        // Two-row layout. Date text is separated from the buttons so long weekday/holiday text
+        // can never push Today or the arrows.
+        const center=h('div',{class:'journal-day-center journal-day-center-two-row'},calBtn,dayLabel);
+        todayBtn.classList.add('journal-today-two-row');
+        const wrap=h('div',{class:'journal-day-nav journal-day-nav-two-row'},
           center,
-          h('button',{class:'btn btn-secondary',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום הבא (עתיד)',onclick:nextDay},'←')
+          h('div',{class:'journal-day-controls-two-row'},
+            h('button',{class:'btn btn-secondary journal-prev-two-row',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום אחורה',onclick:prevDay},'→'),
+            todayBtn,
+            h('button',{class:'btn btn-secondary journal-next-two-row',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום קדימה',onclick:nextDay},'←')
+          )
         );
         return wrap;
       })()
@@ -12476,67 +12483,111 @@ function renderReports(){
       const fromD2=anaFrom||'הכל',toD2=anaTo||'הכל';
       const rows=data.map((d,i)=>`<tr><td style="padding:5px 10px">${i+1}. ${d.label}</td><td style="padding:5px 10px;width:160px"><div style="height:18px;background:#3b82f6;width:${Math.round((d.cnt/maxV)*100)}%;border-radius:3px;min-width:4px;display:inline-flex;align-items:center;padding-right:4px"><span style="font-size:11px;color:white;font-weight:700">${d.cnt}</span></div></td><td style="padding:5px 10px;font-weight:700">${d.cnt}</td></tr>`).join('');
       const html=`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial;direction:rtl;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:16px}table{width:100%;border-collapse:collapse}tr:nth-child(even){background:#f9f9f9}th{background:#f0f0f0;padding:6px 10px;text-align:right}@media print{body{padding:12px}}
-
-/* === SAFE_FIX_v20: minimal spacing-only nav fix === */
-/* Keep original design. Only add stable spacing so weekday text
-   cannot push the Today button and left arrow. */
-
-.journal-day-nav,
-.calendar-nav,
-.day-nav,
-.week-nav,
-.month-nav,
-.date-nav{
-  gap:10px!important;
+/* === SAFE_FIX_v21: journal date text and buttons in separate rows === */
+/* Text row: may be very long. It cannot affect button row. */
+.journal-day-nav-two-row{
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px!important;
+  width:100%!important;
+  direction:rtl!important;
 }
 
-.journal-day-center,
-.calendar-title,
-.day-title,
-.week-title,
-.month-title,
-.date-title{
-  margin-left:28px!important; /* creates separation before left arrow */
-  margin-right:8px!important;
+.journal-day-center-two-row{
+  width:100%!important;
+  max-width:100%!important;
   min-width:0!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px!important;
+  text-align:center!important;
+  overflow:hidden!important;
+  white-space:nowrap!important;
+  text-overflow:ellipsis!important;
+}
+
+.journal-day-center-two-row > *{
+  min-width:0!important;
+  max-width:100%!important;
   overflow:hidden!important;
   text-overflow:ellipsis!important;
   white-space:nowrap!important;
 }
 
-button[aria-label*="היום"],
-button[title*="היום"],
-.btn-today{
-  width:58px!important;
-  min-width:58px!important;
-  max-width:58px!important;
+/* Button row: fixed layout independent of date text */
+.journal-day-controls-two-row{
+  display:grid!important;
+  grid-template-columns:44px 64px 44px!important;
+  gap:12px!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:auto!important;
+  direction:rtl!important;
+}
+
+.journal-day-controls-two-row .journal-prev-two-row{
+  grid-column:1!important;
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  height:38px!important;
+  padding:0!important;
+}
+
+.journal-day-controls-two-row .journal-today-two-row{
+  grid-column:2!important;
+  width:64px!important;
+  min-width:64px!important;
+  max-width:64px!important;
+  height:38px!important;
   padding:0 8px!important;
-  margin-left:14px!important;
   white-space:nowrap!important;
 }
 
-button[aria-label*="יום הבא"],
-button[title*="יום הבא"]{
-  margin-right:14px!important;
+.journal-day-controls-two-row .journal-next-two-row{
+  grid-column:3!important;
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  height:38px!important;
+  padding:0!important;
 }
 
-@media (max-width:700px){
-  .journal-day-center,
-  .calendar-title,
-  .day-title,
-  .week-title,
-  .month-title,
-  .date-title{
-    margin-left:14px!important;
+/* Neutralize old mobile rule that forced buttons into grid rows/columns */
+@media (max-width:992px){
+  .journal-day-nav-two-row{
+    display:flex!important;
+    flex-direction:column!important;
+    gap:8px!important;
   }
-
-  button[aria-label*="היום"],
-  button[title*="היום"],
-  .btn-today{
-    width:52px!important;
-    min-width:52px!important;
-    max-width:52px!important;
-    margin-left:8px!important;
+  .journal-day-nav-two-row > .journal-day-center-two-row{
+    grid-row:auto!important;
+    grid-column:auto!important;
+    min-width:0!important;
+    width:100%!important;
+    flex-wrap:nowrap!important;
+    justify-content:center!important;
+  }
+  .journal-day-controls-two-row{
+    grid-template-columns:40px 56px 40px!important;
+    gap:8px!important;
+  }
+  .journal-day-controls-two-row .journal-prev-two-row,
+  .journal-day-controls-two-row .journal-next-two-row{
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+    height:36px!important;
+  }
+  .journal-day-controls-two-row .journal-today-two-row{
+    width:56px!important;
+    min-width:56px!important;
+    max-width:56px!important;
+    height:36px!important;
+    padding:0 4px!important;
   }
 }
 
@@ -13857,53 +13908,63 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
 </script>
 
 <script>
-/* === SAFE_FIX_FROM_UPLOADED_v14: keep new order modal values === */
+/* === SAFE_FIX_v21: preserve order and inventory modal drafts === */
 (function(){
-  const KEY='__eqs_new_order_modal_draft_uploaded_v14';
+  const ORDER_KEY='__eqs_order_modal_draft_safe_v21';
+  const INV_KEY='__eqs_inventory_modal_draft_safe_v21';
 
+  function textOf(root){ return ((root && (root.innerText||root.textContent)) || '').slice(0,8000); }
   function isOrderDialog(root){
-    if(!root) return false;
-    const text=((root.innerText||'')+' '+(root.textContent||'')).slice(0,6000);
+    const text=textOf(root);
     const hasDateOrTime=!!root.querySelector('input[type="date"],input[type="time"]');
     const hasOrderWords=/הזמנה|שאילה|השאלה|החזרה|מזמין|שואל|סטודנט|בחר ציוד|פריט/.test(text);
     return hasDateOrTime && hasOrderWords;
   }
-
+  function isInventoryDialog(root){
+    const text=textOf(root);
+    const hasBarcode=/ברקוד|Barcode|barcode/.test(text);
+    const hasItemWords=/פריט|מלאי|יצרן|סידורי|חשבונית|רכישה|תמונת פריט/.test(text);
+    return hasBarcode && hasItemWords;
+  }
+  function dialogKind(root){
+    if(!root) return null;
+    if(isOrderDialog(root)) return 'order';
+    if(isInventoryDialog(root)) return 'inventory';
+    return null;
+  }
+  function keyForKind(kind){ return kind==='order' ? ORDER_KEY : INV_KEY; }
   function closestDialog(el){
     if(!el || !el.closest) return null;
     return el.closest('.modal,.modal-lg,.modal-overlay,[role="dialog"],form');
   }
-
   function fieldKey(el,idx){
     return el.name || el.id || el.getAttribute('data-key') || el.getAttribute('placeholder') || el.getAttribute('aria-label') || ('idx_'+idx);
   }
-
   function capture(el){
     const root=closestDialog(el);
-    if(!root || !isOrderDialog(root)) return;
-
+    const kind=dialogKind(root);
+    if(!kind) return;
     const data={};
     [...root.querySelectorAll('input,select,textarea')].forEach((field,idx)=>{
+      if(field.type==='file') return;
       const key=fieldKey(field,idx);
       if(field.type==='checkbox') data[key]=field.checked;
       else if(field.type==='radio'){ if(field.checked) data[key]=field.value; }
       else data[key]=field.value;
     });
-
-    try{ sessionStorage.setItem(KEY,JSON.stringify({at:Date.now(),data})); }catch(e){}
+    try{ sessionStorage.setItem(keyForKind(kind),JSON.stringify({at:Date.now(),data})); }catch(e){}
   }
-
-  function restore(){
+  function restoreKind(kind){
     let saved=null;
-    try{ saved=JSON.parse(sessionStorage.getItem(KEY)||'null'); }catch(e){}
+    try{ saved=JSON.parse(sessionStorage.getItem(keyForKind(kind))||'null'); }catch(e){}
     if(!saved || !saved.data || Date.now()-saved.at>20*60*1000) return;
-
-    const roots=[...document.querySelectorAll('.modal,.modal-lg,.modal-overlay,[role="dialog"],form')].filter(isOrderDialog);
+    const roots=[...document.querySelectorAll('.modal,.modal-lg,.modal-overlay,[role="dialog"],form')]
+      .filter(root=>dialogKind(root)===kind);
     roots.forEach(root=>{
       [...root.querySelectorAll('input,select,textarea')].forEach((field,idx)=>{
+        if(field.type==='file') return;
         const key=fieldKey(field,idx);
         if(!(key in saved.data)) return;
-
         const val=saved.data[key];
         if(field.type==='checkbox') field.checked=!!val;
         else if(field.type==='radio') field.checked=(field.value===val);
@@ -13915,21 +13976,22 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
       });
     });
   }
-
+  function restoreAll(){ restoreKind('order'); restoreKind('inventory'); }
   document.addEventListener('input',e=>capture(e.target),true);
   document.addEventListener('change',e=>capture(e.target),true);
-
   document.addEventListener('click',e=>{
     const t=e.target;
+    const root=closestDialog(t);
+    const kind=dialogKind(root);
+    if(!kind) return;
     const txt=(t && (t.textContent||'')).trim();
-    if(/שלח הזמנה|צור הזמנה|שמור|סגור|בטל/.test(txt)){
-      try{ sessionStorage.removeItem(KEY); }catch(err){}
+    if(/שלח הזמנה|צור הזמנה|אשר הזמנה|שמור|הוסף פריט|יצירת פריט/.test(txt)){
+      try{ sessionStorage.removeItem(keyForKind(kind)); }catch(err){}
     }
   },true);
-
-  const observer=new MutationObserver(()=>setTimeout(restore,0));
+  const observer=new MutationObserver(()=>setTimeout(restoreAll,0));
   observer.observe(document.documentElement,{childList:true,subtree:true});
-  window.addEventListener('DOMContentLoaded',()=>setTimeout(restore,100));
+  window.addEventListener('DOMContentLoaded',()=>setTimeout(restoreAll,100));
 })();
 </script>
 
