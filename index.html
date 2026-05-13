@@ -220,7 +220,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 </head>
-<body><div style="position:fixed;left:10px;bottom:10px;z-index:99999;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:6px 12px;font:700 12px Arial">UPLOADED_HTML_SAFE_FIX_v14</div>
+<body><div style="position:fixed;left:10px;bottom:10px;z-index:99999;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:6px 12px;font:700 12px Arial">UPLOADED_HTML_SAFE_FIX_v16_GLOBAL_NAV_AND_DRAFTS</div>
 <div id="root"></div>
 <script>
 // ============================================================
@@ -12476,41 +12476,378 @@ function renderReports(){
       const fromD2=anaFrom||'הכל',toD2=anaTo||'הכל';
       const rows=data.map((d,i)=>`<tr><td style="padding:5px 10px">${i+1}. ${d.label}</td><td style="padding:5px 10px;width:160px"><div style="height:18px;background:#3b82f6;width:${Math.round((d.cnt/maxV)*100)}%;border-radius:3px;min-width:4px;display:inline-flex;align-items:center;padding-right:4px"><span style="font-size:11px;color:white;font-weight:700">${d.cnt}</span></div></td><td style="padding:5px 10px;font-weight:700">${d.cnt}</td></tr>`).join('');
       const html=`<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial;direction:rtl;padding:24px;font-size:13px}.hdr{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #000;padding-bottom:10px;margin-bottom:16px}table{width:100%;border-collapse:collapse}tr:nth-child(even){background:#f9f9f9}th{background:#f0f0f0;padding:6px 10px;text-align:right}@media print{body{padding:12px}}
-/* === SAFE_FIX_FROM_UPLOADED_v14: stable order calendar arrows === */
+
+/* The weekday/date text changes length; this prevents it from pushing Today / arrows */
 .journal-day-nav{
-  grid-template-columns:44px minmax(360px,max-content) 44px!important;
+  display:grid!important;
+  grid-template-columns:44px 92px 300px 44px!important;
   align-items:center!important;
+  justify-content:center!important;
+  column-gap:8px!important;
+  width:100%!important;
+  direction:rtl!important;
 }
-.journal-day-nav > button:first-child,
-.journal-day-nav > button:last-child{
+
+.journal-day-nav > button,
+.journal-day-nav .btn{
   width:44px!important;
   min-width:44px!important;
   max-width:44px!important;
   height:40px!important;
   padding:0!important;
+  flex:0 0 44px!important;
   display:flex!important;
   align-items:center!important;
   justify-content:center!important;
-  flex:0 0 44px!important;
+  white-space:nowrap!important;
 }
+
+.journal-day-nav button{
+  box-sizing:border-box!important;
+}
+
+/* The Today button is wider but fixed, so it never moves */
+.journal-day-nav button:nth-of-type(2),
+.journal-day-nav .btn-today,
+.journal-day-nav [data-action="today"]{
+  width:92px!important;
+  min-width:92px!important;
+  max-width:92px!important;
+  padding:0 10px!important;
+}
+
+/* Center date area: fixed width, centered text, no layout push */
 .journal-day-center{
-  min-width:360px!important;
+  width:300px!important;
+  min-width:300px!important;
+  max-width:300px!important;
   justify-content:center!important;
+  text-align:center!important;
+  overflow:hidden!important;
+  white-space:nowrap!important;
+  text-overflow:ellipsis!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:6px!important;
 }
-@media (max-width:992px){
+
+/* Any date/day label inside the center gets a fixed visual box */
+.journal-day-center > *,
+.journal-day-center span,
+.journal-day-center div,
+.journal-day-center strong{
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+/* Mobile: still fixed columns, only the date column shrinks */
+@media (max-width:700px){
   .journal-day-nav{
-    grid-template-columns:44px 1fr 44px!important;
-    grid-template-rows:auto!important;
+    grid-template-columns:40px 78px minmax(120px,1fr) 40px!important;
+    column-gap:6px!important;
   }
-  .journal-day-nav > .journal-day-center{
-    grid-row:auto!important;
-    grid-column:auto!important;
+  .journal-day-nav > button,
+  .journal-day-nav .btn{
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+    height:38px!important;
+  }
+  .journal-day-nav button:nth-of-type(2),
+  .journal-day-nav .btn-today,
+  .journal-day-nav [data-action="today"]{
+    width:78px!important;
+    min-width:78px!important;
+    max-width:78px!important;
+    padding:0 6px!important;
+  }
+  .journal-day-center{
+    width:auto!important;
     min-width:0!important;
+    max-width:none!important;
   }
-  .journal-day-nav > button:first-child,
-  .journal-day-nav > button:last-child{
-    grid-row:auto!important;
-    grid-column:auto!important;
+}
+
+
+/* === SAFE_FIX_v16: stable date navigation everywhere === */
+/*
+  Any toolbar that has prev / today / date label / next must not shift
+  when Hebrew weekday/date text changes length.
+*/
+.journal-day-nav,
+.calendar-day-nav,
+.calendar-nav,
+.journal-nav,
+.day-nav,
+.week-nav,
+.month-nav,
+.date-nav,
+.cal-nav,
+.nav-arrows,
+.calendar-controls,
+.journal-controls,
+.date-controls,
+.day-controls,
+.week-controls,
+.month-controls {
+  display:grid!important;
+  grid-template-columns:44px 92px minmax(180px,300px) 44px!important;
+  align-items:center!important;
+  justify-content:center!important;
+  column-gap:8px!important;
+  width:100%!important;
+  direction:rtl!important;
+  min-height:42px!important;
+}
+
+/* Buttons keep fixed width, so repeated clicks remain under the cursor */
+.journal-day-nav > button,
+.calendar-day-nav > button,
+.calendar-nav > button,
+.journal-nav > button,
+.day-nav > button,
+.week-nav > button,
+.month-nav > button,
+.date-nav > button,
+.cal-nav > button,
+.nav-arrows > button,
+.calendar-controls > button,
+.journal-controls > button,
+.date-controls > button,
+.day-controls > button,
+.week-controls > button,
+.month-controls > button,
+.journal-day-nav .btn,
+.calendar-day-nav .btn,
+.calendar-nav .btn,
+.journal-nav .btn,
+.day-nav .btn,
+.week-nav .btn,
+.month-nav .btn,
+.date-nav .btn,
+.cal-nav .btn,
+.nav-arrows .btn,
+.calendar-controls .btn,
+.journal-controls .btn,
+.date-controls .btn,
+.day-controls .btn,
+.week-controls .btn,
+.month-controls .btn,
+button[aria-label*="הבא"],
+button[aria-label*="קודם"],
+button[title*="הבא"],
+button[title*="קודם"] {
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  height:40px!important;
+  padding:0!important;
+  flex:0 0 44px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  white-space:nowrap!important;
+  box-sizing:border-box!important;
+}
+
+/* Today button fixed wider width */
+.journal-day-nav button:nth-of-type(2),
+.calendar-day-nav button:nth-of-type(2),
+.calendar-nav button:nth-of-type(2),
+.journal-nav button:nth-of-type(2),
+.day-nav button:nth-of-type(2),
+.week-nav button:nth-of-type(2),
+.month-nav button:nth-of-type(2),
+.date-nav button:nth-of-type(2),
+.cal-nav button:nth-of-type(2),
+.nav-arrows button:nth-of-type(2),
+.calendar-controls button:nth-of-type(2),
+.journal-controls button:nth-of-type(2),
+.date-controls button:nth-of-type(2),
+.day-controls button:nth-of-type(2),
+.week-controls button:nth-of-type(2),
+.month-controls button:nth-of-type(2),
+.btn-today,
+[data-action="today"],
+button[aria-label*="היום"],
+button[title*="היום"] {
+  width:92px!important;
+  min-width:92px!important;
+  max-width:92px!important;
+  padding:0 10px!important;
+}
+
+/* Center date/title cell is fixed and clipped, never pushes buttons */
+.journal-day-center,
+.calendar-day-center,
+.calendar-center,
+.journal-center,
+.day-center,
+.week-center,
+.month-center,
+.date-center,
+.cal-center,
+.nav-center,
+.calendar-title,
+.journal-title,
+.date-title,
+.day-title,
+.week-title,
+.month-title {
+  width:300px!important;
+  min-width:300px!important;
+  max-width:300px!important;
+  justify-content:center!important;
+  text-align:center!important;
+  overflow:hidden!important;
+  white-space:nowrap!important;
+  text-overflow:ellipsis!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:6px!important;
+  box-sizing:border-box!important;
+}
+
+.journal-day-center > *,
+.calendar-day-center > *,
+.calendar-center > *,
+.journal-center > *,
+.day-center > *,
+.week-center > *,
+.month-center > *,
+.date-center > *,
+.cal-center > *,
+.nav-center > *,
+.calendar-title > *,
+.journal-title > *,
+.date-title > *,
+.day-title > *,
+.week-title > *,
+.month-title > * {
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+/* Fallback: any flex toolbar containing date nav should not let label grow unbounded */
+.card .flex.items-center.justify-between:has(button) {
+  gap:8px!important;
+}
+.card .flex.items-center.justify-between:has(button) > div:not(.flex) {
+  min-width:0!important;
+  max-width:300px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+@media (max-width:700px){
+  .journal-day-nav,
+  .calendar-day-nav,
+  .calendar-nav,
+  .journal-nav,
+  .day-nav,
+  .week-nav,
+  .month-nav,
+  .date-nav,
+  .cal-nav,
+  .nav-arrows,
+  .calendar-controls,
+  .journal-controls,
+  .date-controls,
+  .day-controls,
+  .week-controls,
+  .month-controls {
+    grid-template-columns:40px 78px minmax(90px,1fr) 40px!important;
+    column-gap:6px!important;
+  }
+
+  .journal-day-nav > button,
+  .calendar-day-nav > button,
+  .calendar-nav > button,
+  .journal-nav > button,
+  .day-nav > button,
+  .week-nav > button,
+  .month-nav > button,
+  .date-nav > button,
+  .cal-nav > button,
+  .nav-arrows > button,
+  .calendar-controls > button,
+  .journal-controls > button,
+  .date-controls > button,
+  .day-controls > button,
+  .week-controls > button,
+  .month-controls > button,
+  .journal-day-nav .btn,
+  .calendar-day-nav .btn,
+  .calendar-nav .btn,
+  .journal-nav .btn,
+  .day-nav .btn,
+  .week-nav .btn,
+  .month-nav .btn,
+  .date-nav .btn,
+  .cal-nav .btn,
+  .nav-arrows .btn,
+  .calendar-controls .btn,
+  .journal-controls .btn,
+  .date-controls .btn,
+  .day-controls .btn,
+  .week-controls .btn,
+  .month-controls .btn {
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+    height:38px!important;
+  }
+
+  .journal-day-nav button:nth-of-type(2),
+  .calendar-day-nav button:nth-of-type(2),
+  .calendar-nav button:nth-of-type(2),
+  .journal-nav button:nth-of-type(2),
+  .day-nav button:nth-of-type(2),
+  .week-nav button:nth-of-type(2),
+  .month-nav button:nth-of-type(2),
+  .date-nav button:nth-of-type(2),
+  .cal-nav button:nth-of-type(2),
+  .nav-arrows button:nth-of-type(2),
+  .calendar-controls button:nth-of-type(2),
+  .journal-controls button:nth-of-type(2),
+  .date-controls button:nth-of-type(2),
+  .day-controls button:nth-of-type(2),
+  .week-controls button:nth-of-type(2),
+  .month-controls button:nth-of-type(2),
+  .btn-today,
+  [data-action="today"],
+  button[aria-label*="היום"],
+  button[title*="היום"] {
+    width:78px!important;
+    min-width:78px!important;
+    max-width:78px!important;
+    padding:0 6px!important;
+  }
+
+  .journal-day-center,
+  .calendar-day-center,
+  .calendar-center,
+  .journal-center,
+  .day-center,
+  .week-center,
+  .month-center,
+  .date-center,
+  .cal-center,
+  .nav-center,
+  .calendar-title,
+  .journal-title,
+  .date-title,
+  .day-title,
+  .week-title,
+  .month-title {
+    width:auto!important;
+    min-width:0!important;
+    max-width:none!important;
   }
 }
 
@@ -13830,17 +14167,42 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
 })();
 </script>
 
+
+
+
 <script>
-/* === SAFE_FIX_FROM_UPLOADED_v14: keep new order modal values === */
+/* === SAFE_FIX_v16: preserve order and inventory modal drafts === */
 (function(){
-  const KEY='__eqs_new_order_modal_draft_uploaded_v14';
+  const ORDER_KEY='__eqs_order_modal_draft_safe_v16';
+  const INV_KEY='__eqs_inventory_modal_draft_safe_v16';
+
+  function textOf(root){
+    return ((root && (root.innerText||root.textContent)) || '').slice(0,8000);
+  }
 
   function isOrderDialog(root){
-    if(!root) return false;
-    const text=((root.innerText||'')+' '+(root.textContent||'')).slice(0,6000);
+    const text=textOf(root);
     const hasDateOrTime=!!root.querySelector('input[type="date"],input[type="time"]');
     const hasOrderWords=/הזמנה|שאילה|השאלה|החזרה|מזמין|שואל|סטודנט|בחר ציוד|פריט/.test(text);
     return hasDateOrTime && hasOrderWords;
+  }
+
+  function isInventoryDialog(root){
+    const text=textOf(root);
+    const hasBarcode=/ברקוד|Barcode|barcode/.test(text);
+    const hasItemWords=/פריט|מלאי|יצרן|סידורי|חשבונית|רכישה|תמונת פריט/.test(text);
+    return hasBarcode && hasItemWords;
+  }
+
+  function dialogKind(root){
+    if(!root) return null;
+    if(isOrderDialog(root)) return 'order';
+    if(isInventoryDialog(root)) return 'inventory';
+    return null;
+  }
+
+  function keyForKind(kind){
+    return kind==='order' ? ORDER_KEY : INV_KEY;
   }
 
   function closestDialog(el){
@@ -13854,27 +14216,33 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
 
   function capture(el){
     const root=closestDialog(el);
-    if(!root || !isOrderDialog(root)) return;
+    const kind=dialogKind(root);
+    if(!kind) return;
 
     const data={};
     [...root.querySelectorAll('input,select,textarea')].forEach((field,idx)=>{
       const key=fieldKey(field,idx);
+      if(field.type==='file') return;
       if(field.type==='checkbox') data[key]=field.checked;
       else if(field.type==='radio'){ if(field.checked) data[key]=field.value; }
       else data[key]=field.value;
     });
 
-    try{ sessionStorage.setItem(KEY,JSON.stringify({at:Date.now(),data})); }catch(e){}
+    try{ sessionStorage.setItem(keyForKind(kind),JSON.stringify({at:Date.now(),data})); }catch(e){}
   }
 
-  function restore(){
+  function restoreKind(kind){
+    const storageKey=keyForKind(kind);
     let saved=null;
-    try{ saved=JSON.parse(sessionStorage.getItem(KEY)||'null'); }catch(e){}
+    try{ saved=JSON.parse(sessionStorage.getItem(storageKey)||'null'); }catch(e){}
     if(!saved || !saved.data || Date.now()-saved.at>20*60*1000) return;
 
-    const roots=[...document.querySelectorAll('.modal,.modal-lg,.modal-overlay,[role="dialog"],form')].filter(isOrderDialog);
+    const roots=[...document.querySelectorAll('.modal,.modal-lg,.modal-overlay,[role="dialog"],form')]
+      .filter(root=>dialogKind(root)===kind);
+
     roots.forEach(root=>{
       [...root.querySelectorAll('input,select,textarea')].forEach((field,idx)=>{
+        if(field.type==='file') return;
         const key=fieldKey(field,idx);
         if(!(key in saved.data)) return;
 
@@ -13890,20 +14258,30 @@ alter publication supabase_realtime add table public.eqs_app_state;`;
     });
   }
 
+  function restoreAll(){
+    restoreKind('order');
+    restoreKind('inventory');
+  }
+
   document.addEventListener('input',e=>capture(e.target),true);
   document.addEventListener('change',e=>capture(e.target),true);
 
+  // Clear only after explicit final actions, not during automatic re-render / availability checks.
   document.addEventListener('click',e=>{
     const t=e.target;
+    const root=closestDialog(t);
+    const kind=dialogKind(root);
+    if(!kind) return;
+
     const txt=(t && (t.textContent||'')).trim();
-    if(/שלח הזמנה|צור הזמנה|שמור|סגור|בטל/.test(txt)){
-      try{ sessionStorage.removeItem(KEY); }catch(err){}
+    if(/שלח הזמנה|צור הזמנה|אשר הזמנה|שמור|הוסף פריט|יצירת פריט/.test(txt)){
+      try{ sessionStorage.removeItem(keyForKind(kind)); }catch(err){}
     }
   },true);
 
-  const observer=new MutationObserver(()=>setTimeout(restore,0));
+  const observer=new MutationObserver(()=>setTimeout(restoreAll,0));
   observer.observe(document.documentElement,{childList:true,subtree:true});
-  window.addEventListener('DOMContentLoaded',()=>setTimeout(restore,100));
+  window.addEventListener('DOMContentLoaded',()=>setTimeout(restoreAll,100));
 })();
 </script>
 
