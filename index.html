@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>בית הספר לתקשורת – מערכת ניהול הזמנות ומלאי</title>
+<title>V30 – מערכת ניהול הזמנות ומלאי</title>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -216,11 +216,185 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
 .journal-timeline-grid--head .journal-timeline-track{min-height:20px}
 .responsive-grid-2{display:grid;grid-template-columns:1fr 1fr}
 .responsive-grid-field-btn{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+
+/* === V30 PORT STAGE 1: keep old logic, move navigation to top/mobile-friendly === */
+.v30-port-badge{
+  position:fixed;
+  left:10px;
+  bottom:10px;
+  z-index:30000;
+  background:#dcfce7;
+  color:#166534;
+  border:1px solid #86efac;
+  border-radius:999px;
+  padding:6px 12px;
+  font:700 12px Arial;
+}
+
+/* Desktop/tablet: sidebar becomes a top app bar */
+@media (min-width: 993px){
+  .app{
+    display:flex!important;
+    flex-direction:column!important;
+    overflow:hidden!important;
+  }
+  .sidebar{
+    position:sticky!important;
+    top:0!important;
+    right:auto!important;
+    bottom:auto!important;
+    width:100%!important;
+    min-width:0!important;
+    height:auto!important;
+    max-height:none!important;
+    z-index:1000!important;
+    display:flex!important;
+    flex-direction:row!important;
+    align-items:center!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    border-left:0!important;
+    border-bottom:1px solid var(--border)!important;
+    box-shadow:0 4px 20px rgba(0,0,0,.16)!important;
+    padding:6px 10px!important;
+  }
+  .sidebar-logo{
+    flex:0 0 auto!important;
+    width:auto!important;
+    min-width:180px!important;
+    padding:6px 10px!important;
+    border-bottom:0!important;
+    border-left:1px solid var(--border)!important;
+    text-align:right!important;
+    display:flex!important;
+    align-items:center!important;
+    gap:8px!important;
+  }
+  .sidebar-logo img{
+    height:34px!important;
+    margin:0!important;
+  }
+  .sidebar-logo h2{
+    font-size:12px!important;
+    line-height:1.2!important;
+    margin:0!important;
+    white-space:nowrap!important;
+  }
+  .sidebar-logo p{
+    display:none!important;
+  }
+  .sidebar-quick-actions{
+    flex:0 0 auto!important;
+    padding:0 8px!important;
+    border-bottom:0!important;
+    border-left:1px solid var(--border)!important;
+  }
+  .sidebar-nav{
+    flex:1 1 auto!important;
+    display:flex!important;
+    flex-direction:row!important;
+    align-items:center!important;
+    gap:4px!important;
+    padding:0 8px!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    min-width:0!important;
+  }
+  .nav-group-label,.nav-section{
+    display:none!important;
+  }
+  .nav-item,.nav-item.sub{
+    flex:0 0 auto!important;
+    border-right:0!important;
+    border-bottom:3px solid transparent!important;
+    border-radius:12px!important;
+    padding:9px 12px!important;
+    white-space:nowrap!important;
+    font-size:12px!important;
+    min-height:36px!important;
+    display:flex!important;
+    align-items:center!important;
+  }
+  .nav-item.active,.nav-item.sub.active{
+    border-bottom-color:var(--accent)!important;
+    background:rgba(59,130,246,.14)!important;
+  }
+  .sidebar-user{
+    flex:0 0 auto!important;
+    padding:6px 10px!important;
+    border-top:0!important;
+    border-right:1px solid var(--border)!important;
+    min-width:140px!important;
+  }
+  .main{
+    margin-right:0!important;
+    padding:18px!important;
+    height:calc(100vh - 72px)!important;
+    overflow-y:auto!important;
+  }
+  .mobile-menu-btn,.sidebar-backdrop,.sidebar-close-mobile{
+    display:none!important;
+  }
+}
+
+/* Mobile: keep drawer behavior but make it app-like and easier to use */
+@media (max-width: 992px){
+  .main{
+    margin-right:0!important;
+    padding:64px 10px 20px!important;
+  }
+  .mobile-menu-btn{
+    display:flex!important;
+    background:var(--accent)!important;
+    color:#fff!important;
+    border-color:transparent!important;
+  }
+  .sidebar{
+    width:min(340px,92vw)!important;
+  }
+  .nav-item,.nav-item.sub{
+    min-height:42px!important;
+    font-size:14px!important;
+  }
+}
+
+/* More readable edit modals on mobile */
+@media (max-width: 760px){
+  .modal{
+    width:100%!important;
+    max-width:100%!important;
+    max-height:94vh!important;
+    border-radius:14px!important;
+  }
+  .grid{
+    grid-template-columns:1fr!important;
+  }
+  input,select,textarea{
+    font-size:16px!important;
+  }
+}
+
+
+/* === BUGFIX v14: stable calendar navigation arrows === */
+.calendar-nav,.journal-nav,.date-nav,.day-nav,.week-nav,.month-nav,.cal-nav,.nav-arrows,.calendar-controls,.journal-controls{
+  display:flex!important;align-items:center!important;gap:8px!important;min-height:42px!important;
+}
+.calendar-nav .btn,.journal-nav .btn,.date-nav .btn,.day-nav .btn,.week-nav .btn,.month-nav .btn,.cal-nav .btn,.nav-arrows .btn,.calendar-controls .btn,.journal-controls .btn,
+button[aria-label*="הבא"],button[aria-label*="קודם"],button[title*="הבא"],button[title*="קודם"]{
+  flex:0 0 42px!important;width:42px!important;min-width:42px!important;max-width:42px!important;height:38px!important;padding:0!important;text-align:center!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;
+}
+.calendar-header,.journal-header,.calendar-toolbar,.journal-toolbar{
+  display:grid!important;grid-template-columns:42px minmax(160px,1fr) 42px!important;align-items:center!important;gap:8px!important;
+}
+.calendar-header .btn,.journal-header .btn,.calendar-toolbar .btn,.journal-toolbar .btn{
+  width:42px!important;min-width:42px!important;
+}
+
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 </head>
-<body>
+<body><div class="v30-port-badge">V15_ORDER_MODAL_STUDENT_FIX</div>
 <div id="root"></div>
 <script>
 // ============================================================
@@ -6943,6 +7117,75 @@ ${o.adminNotes?`<div class="section-title" style="color:#7c3aed">הערות מנ
     <div>חתימת מקבל הציוד: _______________</div>
   </div>
 </div>
+
+
+<script>
+/* === BUGFIX v15: preserve manager AND student order modal draft === */
+(function(){
+  const KEY='__eqs_order_modal_draft_v14';
+  function isOrderModalForm(form){
+    if(!form) return false;
+    const text=(form.innerText||'')+' '+(form.textContent||'');
+    const hasDateOrTime=form.querySelector('input[type="date"],input[type="time"]');
+    const hasBorrower=/מזמין|שואל|שם המזמין|משתמש|סטודנט|הזמן ציוד|בקשת השאלה|בחר ציוד/.test(text);
+    const hasOrder=/הזמנה|שאילה|השאלה|החזרה|הזמן|בקשה/.test(text);
+    return !!hasDateOrTime && (hasBorrower || hasOrder);
+  }
+  function modalRoot(el){
+    return el && (el.closest('.modal,.modal-content,[role="dialog"],.popup,.dialog') || el.closest('form') || document.body);
+  }
+  function capture(root){
+    root=root||document;
+    const scope=modalRoot(root) || root;
+    const form=scope.matches&&scope.matches('form')?scope:scope.querySelector('form')||scope;
+    if(!isOrderModalForm(form)) return;
+    const fields=[...form.querySelectorAll('input,select,textarea')];
+    const data={};
+    fields.forEach((el,idx)=>{
+      const key=el.name||el.id||el.getAttribute('data-key')||el.getAttribute('placeholder')||('idx_'+idx);
+      if(!key) return;
+      if(el.type==='checkbox') data[key]=el.checked;
+      else if(el.type==='radio'){ if(el.checked) data[key]=el.value; }
+      else data[key]=el.value;
+    });
+    try{ sessionStorage.setItem(KEY,JSON.stringify({at:Date.now(),data})); }catch(e){}
+  }
+  function restore(root){
+    let saved=null;
+    try{ saved=JSON.parse(sessionStorage.getItem(KEY)||'null'); }catch(e){}
+    if(!saved || !saved.data || Date.now()-saved.at>20*60*1000) return;
+    root=root||document;
+    const forms=[...root.querySelectorAll('form,.modal,.modal-content,[role="dialog"],.popup,.dialog')];
+    const targets=forms.length?forms:[document.body];
+    targets.forEach(form=>{
+      if(!isOrderModalForm(form)) return;
+      const fields=[...form.querySelectorAll('input,select,textarea')];
+      fields.forEach((el,idx)=>{
+        const key=el.name||el.id||el.getAttribute('data-key')||el.getAttribute('placeholder')||('idx_'+idx);
+        if(!(key in saved.data)) return;
+        const val=saved.data[key];
+        if(el.type==='checkbox') el.checked=!!val;
+        else if(el.type==='radio') el.checked=(el.value===val);
+        else if(el.value!==val){
+          el.value=val;
+          el.dispatchEvent(new Event('input',{bubbles:true}));
+          el.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+      });
+    });
+  }
+  document.addEventListener('input',e=>capture(e.target),true);
+  document.addEventListener('change',e=>capture(e.target),true);
+  document.addEventListener('click',e=>{
+    const t=e.target;
+    if(t && /סגור|ביטול|שמור|שלח|אישור|צור/.test(t.textContent||'')) return;
+    capture(t);
+  },true);
+  const mo=new MutationObserver(()=>setTimeout(()=>restore(document),0));
+  mo.observe(document.documentElement,{childList:true,subtree:true});
+  window.addEventListener('DOMContentLoaded',()=>setTimeout(()=>restore(document),50));
+})();
+</script>
 
 </body></html>`;
   return html;
