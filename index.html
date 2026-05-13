@@ -220,7 +220,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 </head>
-<body><div style="position:fixed;left:10px;bottom:10px;z-index:99999;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:6px 12px;font:700 12px Arial">UPLOADED_HTML_SAFE_FIX_v16_GLOBAL_NAV_AND_DRAFTS</div>
+<body><div style="position:fixed;left:10px;bottom:10px;z-index:99999;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:999px;padding:6px 12px;font:700 12px Arial">UPLOADED_HTML_SAFE_FIX_v18_REAL_NAV_SEPARATION</div>
 <div id="root"></div>
 <script>
 // ============================================================
@@ -3673,11 +3673,15 @@ function renderJournals(){
           onclick:()=>setState({journalDate:today()})
         },'היום');
         // RTL: עבר בימין, עתיד בשמאל — סדר DOM עם direction:rtl שם יום קודם בימין, יום הבא בשמאל
-        const center=h('div',{class:'journal-day-center'},calBtn,dayLabel,todayBtn);
-        const wrap=h('div',{class:'journal-day-nav'},
-          h('button',{class:'btn btn-secondary',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום קודם (עבר)',onclick:prevDay},'→'),
+        // FIX v18: keep Today and arrows outside the weekday/date text flow.
+        // The weekday text can be long, but it cannot push the buttons anymore.
+        todayBtn.classList.add('journal-today-fixed');
+        const center=h('div',{class:'journal-day-center'},calBtn,dayLabel);
+        const wrap=h('div',{class:'journal-day-nav journal-day-nav-fixed'},
+          h('button',{class:'btn btn-secondary journal-prev-fixed',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום קודם (עבר)',onclick:prevDay},'→'),
+          todayBtn,
           center,
-          h('button',{class:'btn btn-secondary',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום הבא (עתיד)',onclick:nextDay},'←')
+          h('button',{class:'btn btn-secondary journal-next-fixed',style:{padding:'6px 12px',fontSize:'18px',lineHeight:1,width:'44px'},title:'יום הבא (עתיד)',onclick:nextDay},'←')
         );
         return wrap;
       })()
@@ -12571,7 +12575,6 @@ function renderReports(){
 }
 
 
-/* === SAFE_FIX_v16: stable date navigation everywhere === */
 /*
   Any toolbar that has prev / today / date label / next must not shift
   when Hebrew weekday/date text changes length.
@@ -12848,6 +12851,273 @@ button[title*="היום"] {
     width:auto!important;
     min-width:0!important;
     max-width:none!important;
+  }
+}
+
+
+/* === SAFE_FIX_v17: absolute fixed date-nav buttons === */
+.journal-day-nav{
+  position:relative!important;
+  display:block!important;
+  width:100%!important;
+  min-height:48px!important;
+  padding:4px 154px!important;
+  box-sizing:border-box!important;
+  direction:rtl!important;
+}
+
+.journal-day-center{
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  height:40px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  text-align:center!important;
+  overflow:hidden!important;
+  white-space:nowrap!important;
+  text-overflow:ellipsis!important;
+  margin:0 auto!important;
+  box-sizing:border-box!important;
+}
+
+.journal-day-center > *,
+.journal-day-center span,
+.journal-day-center div,
+.journal-day-center strong{
+  min-width:0!important;
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+.journal-day-nav > button,
+.journal-day-nav > .btn{
+  position:absolute!important;
+  top:4px!important;
+  height:40px!important;
+  min-height:40px!important;
+  max-height:40px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  box-sizing:border-box!important;
+  margin:0!important;
+  white-space:nowrap!important;
+  z-index:2!important;
+}
+
+.journal-day-nav > button:first-child,
+.journal-day-nav > .btn:first-child{
+  right:0!important;
+  left:auto!important;
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  padding:0!important;
+}
+
+.journal-day-nav > button:nth-of-type(2),
+.journal-day-nav > .btn:nth-of-type(2),
+.journal-day-nav .btn-today,
+.journal-day-nav [data-action="today"],
+.journal-day-nav button[aria-label*="היום"],
+.journal-day-nav button[title*="היום"]{
+  right:52px!important;
+  left:auto!important;
+  width:92px!important;
+  min-width:92px!important;
+  max-width:92px!important;
+  padding:0 10px!important;
+}
+
+.journal-day-nav > button:last-child,
+.journal-day-nav > .btn:last-child{
+  left:0!important;
+  right:auto!important;
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  padding:0!important;
+}
+
+.calendar-day-nav,
+.calendar-nav,
+.journal-nav,
+.day-nav,
+.week-nav,
+.month-nav,
+.date-nav,
+.cal-nav,
+.calendar-controls,
+.journal-controls,
+.date-controls,
+.day-controls,
+.week-controls,
+.month-controls{
+  position:relative!important;
+  min-height:48px!important;
+  padding:4px 154px!important;
+  box-sizing:border-box!important;
+  direction:rtl!important;
+}
+
+.calendar-day-center,
+.calendar-center,
+.journal-center,
+.day-center,
+.week-center,
+.month-center,
+.date-center,
+.cal-center,
+.nav-center,
+.calendar-title,
+.journal-title,
+.date-title,
+.day-title,
+.week-title,
+.month-title{
+  min-width:0!important;
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+  text-align:center!important;
+}
+
+@media (max-width:700px){
+  .journal-day-nav,
+  .calendar-day-nav,
+  .calendar-nav,
+  .journal-nav,
+  .day-nav,
+  .week-nav,
+  .month-nav,
+  .date-nav,
+  .cal-nav,
+  .calendar-controls,
+  .journal-controls,
+  .date-controls,
+  .day-controls,
+  .week-controls,
+  .month-controls{
+    min-height:46px!important;
+    padding:4px 126px!important;
+  }
+
+  .journal-day-nav > button:first-child,
+  .journal-day-nav > .btn:first-child{
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+  }
+
+  .journal-day-nav > button:nth-of-type(2),
+  .journal-day-nav > .btn:nth-of-type(2),
+  .journal-day-nav .btn-today,
+  .journal-day-nav [data-action="today"],
+  .journal-day-nav button[aria-label*="היום"],
+  .journal-day-nav button[title*="היום"]{
+    right:46px!important;
+    width:74px!important;
+    min-width:74px!important;
+    max-width:74px!important;
+    padding:0 6px!important;
+  }
+
+  .journal-day-nav > button:last-child,
+  .journal-day-nav > .btn:last-child{
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+  }
+}
+
+
+/* === SAFE_FIX_v18: real separation of Today/arrows from weekday text === */
+.journal-day-nav-fixed{
+  display:grid!important;
+  grid-template-columns:44px 92px minmax(220px,1fr) 44px!important;
+  gap:14px!important;
+  align-items:center!important;
+  width:100%!important;
+  direction:rtl!important;
+}
+
+.journal-day-nav-fixed .journal-prev-fixed{
+  grid-column:1!important;
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  justify-self:stretch!important;
+}
+
+.journal-day-nav-fixed .journal-today-fixed{
+  grid-column:2!important;
+  width:92px!important;
+  min-width:92px!important;
+  max-width:92px!important;
+  justify-self:stretch!important;
+}
+
+.journal-day-nav-fixed .journal-day-center{
+  grid-column:3!important;
+  min-width:0!important;
+  width:100%!important;
+  max-width:100%!important;
+  overflow:hidden!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:10px!important;
+  white-space:nowrap!important;
+}
+
+.journal-day-nav-fixed .journal-day-center > *{
+  min-width:0!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+.journal-day-nav-fixed .journal-next-fixed{
+  grid-column:4!important;
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  justify-self:stretch!important;
+}
+
+/* Neutralize older absolute/position fixes for this exact fixed nav */
+.journal-day-nav-fixed,
+.journal-day-nav-fixed > button,
+.journal-day-nav-fixed > .btn,
+.journal-day-nav-fixed .journal-day-center{
+  position:static!important;
+  left:auto!important;
+  right:auto!important;
+  top:auto!important;
+  padding-left:0!important;
+  padding-right:0!important;
+}
+
+@media (max-width:700px){
+  .journal-day-nav-fixed{
+    grid-template-columns:40px 76px minmax(80px,1fr) 40px!important;
+    gap:6px!important;
+  }
+  .journal-day-nav-fixed .journal-prev-fixed,
+  .journal-day-nav-fixed .journal-next-fixed{
+    width:40px!important;
+    min-width:40px!important;
+    max-width:40px!important;
+  }
+  .journal-day-nav-fixed .journal-today-fixed{
+    width:76px!important;
+    min-width:76px!important;
+    max-width:76px!important;
   }
 }
 
